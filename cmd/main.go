@@ -1,0 +1,99 @@
+package main
+
+import (
+	"database/sql"
+	"log/slog"
+	"os"
+	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+	tele "gopkg.in/telebot.v4"
+
+	"github.com/8thgencore/dory-reminder-bot/internal/config"
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram"
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler"
+	"github.com/8thgencore/dory-reminder-bot/internal/repository"
+	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
+	"github.com/8thgencore/dory-reminder-bot/pkg/logger"
+)
+
+func main() {
+	// Load config
+	cfg, err := config.NewConfig()
+	if err != nil {
+		slog.Error("Failed to load config", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize logger
+	log := logger.New(cfg.Env)
+	log.Info("Starting dory-reminder-bot", "env", cfg.Env)
+
+	// Validate required config
+	if cfg.Telegram.Token == "" {
+		log.Error("TELEGRAM_TOKEN is required")
+		os.Exit(1)
+	}
+
+	// Initialize bot
+	pref := tele.Settings{
+		Token:  cfg.Telegram.Token,
+		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+	}
+
+	bot, err := tele.NewBot(pref)
+	if err != nil {
+		log.Error("Failed to create bot", "error", err)
+		os.Exit(1)
+	}
+
+	// Устанавливаем команды бота для меню Telegram
+	commands := []tele.Command{
+		{Text: "start", Description: "Запустить бота"},
+		{Text: "help", Description: "Справка"},
+		{Text: "add", Description: "Добавить напоминание"},
+		{Text: "list", Description: "Список напоминаний"},
+		{Text: "edit", Description: "Редактировать напоминание"},
+		{Text: "delete", Description: "Удалить напоминание"},
+		{Text: "pause", Description: "Поставить на паузу"},
+		{Text: "resume", Description: "Возобновить"},
+		{Text: "timezone", Description: "Установить часовой пояс"},
+	}
+	if err := bot.SetCommands(commands); err != nil {
+		log.Error("Failed to set bot commands", "error", err)
+	}
+
+	// Init DB
+	db, err := sql.Open("sqlite3", "data/reminders.db")
+	if err != nil {
+		log.Error("Failed to open database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	// Migrate schema
+	if err := repository.Migrate(db); err != nil {
+		log.Error("Failed to migrate database", "error", err)
+		os.Exit(1)
+	}
+
+	repo := repository.NewReminderRepository(db)
+	userRepo := repository.NewUserRepository(db)
+	uc := usecase.NewReminderUsecase(repo)
+	userUc := usecase.NewUserUsecase(userRepo)
+	handler := handler.NewHandler(bot, uc, userUc)
+	handler.Register()
+
+	telegram.StartScheduler(bot, uc)
+
+	bot.Handle("/start", func(c tele.Context) error {
+		return handler.HandleStart(c, userUc)
+	})
+
+	bot.Handle("/help", func(c tele.Context) error {
+		return handler.HandleHelp(c)
+	})
+
+	log.Info("Bot started successfully")
+	bot.Start()
+}

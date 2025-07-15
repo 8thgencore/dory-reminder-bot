@@ -1,0 +1,98 @@
+version: "2"
+
+run:
+  timeout: 5m
+  concurrency: 8
+  issues-exit-code: 1
+  tests: true
+
+output:
+  formats:
+    text:
+      path: stdout
+    html:
+      path: tmp/linter-report-backend.html
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gocognit
+    - goconst
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nlreturn
+    - perfsprint
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    dupl:
+      threshold: 100
+    gocognit:
+      min-complexity: 30
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    govet:
+      disable:
+        - fieldalignment
+        - printf
+        - shadow
+      enable-all: true
+    lll:
+      line-length: 120
+    nlreturn:
+      block-size: 5
+    perfsprint:
+      int-conversion: true
+      err-error: true
+      errorf: true
+      sprintf1: true
+      strconcat: true
+  exclusions:
+    generated: lax
+    rules:
+      - path: (.+)\.go$
+        text: G104
+      - path: (.+)\.go$
+        text: exported func .* returns unexported type .*, which can be annoying to use
+      - path: (.+)\.go$
+        text: should have a package comment
+      - path: (.+)\.go$
+        text: don't use an underscore in package name
+    paths:
+      - \.pb\.go$
+      - \.pb\.gw\.go$
+      - _test\.go$
+      - bin
+      - vendor
+      - var
+      - tmp
+      - mocks
+      - \.cache
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - \.pb\.go$
+      - \.pb\.gw\.go$
+      - _test\.go$
+      - bin
+      - vendor
+      - var
+      - tmp
+      - mocks
+      - \.cache
+      - third_party$
+      - builtin$
+      - examples$
