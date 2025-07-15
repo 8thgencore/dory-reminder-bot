@@ -33,7 +33,7 @@ func (u *reminderUsecase) AddReminder(ctx context.Context, r *domain.Reminder) e
 }
 
 func (u *reminderUsecase) EditReminder(ctx context.Context, r *domain.Reminder) error {
-	return nil
+	return u.repo.Update(ctx, r)
 }
 
 func (u *reminderUsecase) DeleteReminder(ctx context.Context, id int64) error {

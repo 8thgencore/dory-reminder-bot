@@ -9,6 +9,7 @@ import (
 
 	usecase_domain "github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
+	"github.com/8thgencore/dory-reminder-bot/pkg/validator"
 	tele "gopkg.in/telebot.v4"
 )
 
@@ -29,6 +30,25 @@ var (
 /timezone - установить часовой пояс`
 )
 
+// Проверка наличия таймзоны у пользователя
+func (h *Handler) checkTimezone(c tele.Context) (bool, error) {
+	return h.UserUsecase.HasTimezone(context.Background(), c.Chat().ID, c.Sender().ID)
+}
+
+// Получение номера напоминания из команды
+func getReminderNumber(arg string) (int, error) {
+	num, err := strconv.Atoi(strings.TrimSpace(arg))
+	if err != nil || num <= 0 {
+		return 0, fmt.Errorf("Некорректный номер")
+	}
+	return num, nil
+}
+
+// Получение списка напоминаний
+func (h *Handler) getReminders(chatID int64) ([]*usecase_domain.Reminder, error) {
+	return h.Usecase.ListReminders(context.Background(), chatID)
+}
+
 func (h *Handler) HandleStart(c tele.Context, userUc usecase.UserUsecase) error {
 	userID := c.Sender().ID
 	chatID := c.Chat().ID
@@ -38,59 +58,40 @@ func (h *Handler) HandleStart(c tele.Context, userUc usecase.UserUsecase) error 
 
 	slog.Info("User started bot", "user_id", userID, "chat_id", chatID, "username", username)
 
-	// Create or update user
 	_, err := userUc.GetOrCreateUser(context.Background(), chatID, userID, username, firstName, lastName)
 	if err != nil {
-		slog.Error("Failed to create/update user", "user_id", userID, "chat_id", chatID, "error", err)
 		return c.Send("Ошибка при инициализации пользователя")
 	}
-
-	// Check if user has timezone set
 	hasTZ, err := userUc.HasTimezone(context.Background(), chatID, userID)
 	if err != nil {
-		slog.Error("Failed to check user timezone", "user_id", userID, "chat_id", chatID, "error", err)
 		return c.Send("Ошибка при проверке настроек пользователя")
 	}
-
 	if !hasTZ {
 		return c.Send(welcomeTextNoTZ)
 	}
-
-	return c.Send(welcomeText, &tele.SendOptions{
-		ParseMode: tele.ModeMarkdown,
-	}, h.GetMainMenu())
+	return c.Send(welcomeText, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, h.GetMainMenu())
 }
 
 func (h *Handler) HandleHelp(c tele.Context) error {
-	userID := c.Sender().ID
-	chatID := c.Chat().ID
-	slog.Info("User requested help", "user_id", userID, "chat_id", chatID)
-
+	slog.Info("User requested help", "user_id", c.Sender().ID, "chat_id", c.Chat().ID)
 	return c.Send(helpText)
 }
 
 func (h *Handler) onAdd(c tele.Context) error {
-	userID := c.Sender().ID
-	chatID := c.Chat().ID
-	slog.Info("User started add reminder wizard", "user_id", userID, "chat_id", chatID, "chat_type", c.Chat().Type)
-
-	// Check if user has timezone set
-	hasTZ, err := h.UserUsecase.HasTimezone(context.Background(), chatID, userID)
+	hasTZ, err := h.checkTimezone(c)
 	if err != nil {
-		slog.Error("Failed to check user timezone", "user_id", userID, "chat_id", chatID, "error", err)
 		return c.Send("Ошибка при проверке настроек пользователя")
 	}
-
 	if !hasTZ {
 		return c.Send("⚠️ Сначала установите часовой пояс командой /timezone")
 	}
-
 	if c.Message().Payload != "" {
 		return c.Send("Для создания напоминания используйте мастер через /add без параметров.")
 	}
 	return c.Send("Выберите тип напоминания:", addMenu)
 }
 
+// Коллбэки для типов напоминаний
 func (h *Handler) cbAddToday(c tele.Context) error    { return h.HandleAddTypeCallback(c, "today") }
 func (h *Handler) cbAddTomorrow(c tele.Context) error { return h.HandleAddTypeCallback(c, "tomorrow") }
 func (h *Handler) cbAddMultiDay(c tele.Context) error { return h.HandleAddTypeCallback(c, "multiday") }
@@ -101,27 +102,22 @@ func (h *Handler) cbAddMonth(c tele.Context) error    { return h.HandleAddTypeCa
 func (h *Handler) cbAddYear(c tele.Context) error     { return h.HandleAddTypeCallback(c, "year") }
 func (h *Handler) cbAddDate(c tele.Context) error     { return h.HandleAddTypeCallback(c, "date") }
 
+// Обработка текстовых сообщений (мастер добавления/таймзона)
 func (h *Handler) onText(c tele.Context) error {
-	userID := c.Sender().ID
-	chatID := c.Chat().ID
-	sess := h.Session.Get(chatID, userID)
-
+	sess := h.Session.Get(c.Chat().ID, c.Sender().ID)
 	if sess != nil && sess.Step == StepTimezone {
 		return h.HandleTimezoneText(c)
 	}
-
-	// Check if user is in add wizard
 	if sess != nil && (sess.Step == StepTime || sess.Step == StepText) {
 		return h.HandleAddWizardText(c)
 	}
-
-	return nil // игнорировать, если не в мастере
+	return nil
 }
 
 // Пагинация: сколько напоминаний на страницу
 const remindersPerPage = 10
 
-// Добавляем вспомогательную функцию для отображения режима
+// Форматирование режима повтора
 func formatRepeat(r *usecase_domain.Reminder) string {
 	switch r.Repeat {
 	case usecase_domain.RepeatNone:
@@ -139,40 +135,25 @@ func formatRepeat(r *usecase_domain.Reminder) string {
 	}
 }
 
-// Обработчик для показа списка с пагинацией
+// Список напоминаний с пагинацией
 func (h *Handler) onList(c tele.Context) error {
-	userID := c.Sender().ID
-	chatID := c.Chat().ID
-	slog.Info("User requested reminders list", "user_id", userID, "chat_id", chatID)
-
-	reminders, err := h.Usecase.ListReminders(context.Background(), chatID)
+	reminders, err := h.getReminders(c.Chat().ID)
 	if err != nil {
-		slog.Error("Failed to get reminders list", "user_id", userID, "chat_id", chatID, "error", err)
 		return c.Send("Ошибка при получении списка напоминаний")
 	}
 	if len(reminders) == 0 {
-		slog.Info("User has no reminders", "user_id", userID, "chat_id", chatID)
 		return c.Send("Нет напоминаний")
 	}
-
-	// Пагинация
 	page := 0
-	if c.Callback() != nil {
-		// Если это callback, то читаем номер страницы из данных
-		data := c.Callback().Data
-		if strings.HasPrefix(data, "rem_page_") {
-			p, err := strconv.Atoi(strings.TrimPrefix(data, "rem_page_"))
-			if err == nil && p >= 0 {
-				page = p
-			}
+	if cb := c.Callback(); cb != nil && strings.HasPrefix(cb.Data, "rem_page_") {
+		if p, err := strconv.Atoi(strings.TrimPrefix(cb.Data, "rem_page_")); err == nil && p >= 0 {
+			page = p
 		}
 	}
-	start := page * remindersPerPage
-	end := start + remindersPerPage
+	start, end := page*remindersPerPage, (page+1)*remindersPerPage
 	if end > len(reminders) {
 		end = len(reminders)
 	}
-
 	msg := "📋 Ваши напоминания:\n\n"
 	for i := start; i < end; i++ {
 		r := reminders[i]
@@ -180,11 +161,8 @@ func (h *Handler) onList(c tele.Context) error {
 		if r.Paused {
 			status = "⏸️"
 		}
-		mode := formatRepeat(r)
-		msg += fmt.Sprintf("%s %d. %s\n   📅 %s\n   🔁 %s\n\n", status, i+1, r.Text, r.NextTime.Format("02.01.2006 15:04"), mode)
+		msg += fmt.Sprintf("%s %d. %s\n   📅 %s\n   🔁 %s\n\n", status, i+1, r.Text, r.NextTime.Format("02.01.2006 15:04"), formatRepeat(r))
 	}
-
-	// Кнопки пагинации
 	var nav tele.ReplyMarkup
 	rows := []tele.Row{}
 	if start > 0 {
@@ -206,131 +184,93 @@ func (h *Handler) onList(c tele.Context) error {
 	return c.Send(msg)
 }
 
-func formatReminder(idx int, r *usecase_domain.Reminder) string {
-	return fmt.Sprintf("%d. %s (%s)", idx, r.Text, r.NextTime.Format("02.01.2006 15:04"))
+func (h *Handler) onEdit(c tele.Context) error {
+	args := strings.Fields(strings.TrimSpace(c.Message().Payload))
+	if len(args) < 2 {
+		return c.Send("Формат: /edit <номер> <новый текст> или /edit <номер> <время> <новый текст>")
+	}
+	num, err := getReminderNumber(args[0])
+	if err != nil {
+		return c.Send("Ошибка: укажите корректный номер напоминания из списка")
+	}
+	reminders, err := h.getReminders(c.Chat().ID)
+	if err != nil {
+		return c.Send("Ошибка при получении списка напоминаний")
+	}
+	if num > len(reminders) {
+		return c.Send("Нет напоминания с таким номером")
+	}
+	rem := reminders[num-1]
+
+	// Если второй аргумент — время, то обновляем и время, и текст
+	newTime := ""
+	newText := ""
+	if len(args) >= 3 && validator.IsTime(args[1]) {
+		newTime = args[1]
+		newText = strings.Join(args[2:], " ")
+	} else {
+		newText = strings.Join(args[1:], " ")
+	}
+	if newTime != "" {
+		if !validator.IsTime(newTime) {
+			return c.Send("Время должно быть в формате 15:00")
+		}
+		rem.NextTime = validator.NextTimeFromString(newTime, rem.NextTime)
+	}
+	if newText != "" {
+		rem.Text = newText
+	}
+	err = h.Usecase.EditReminder(context.Background(), rem)
+	if err != nil {
+		return c.Send("Ошибка при обновлении напоминания")
+	}
+	return c.Send("Напоминание обновлено!")
 }
 
-func (h *Handler) onEdit(c tele.Context) error {
-	return c.Send("Редактирование напоминания в разработке")
+// Удаление, пауза, возобновление — общий шаблон
+func (h *Handler) handleReminderAction(c tele.Context, action string, do func(remID int64) error) error {
+	arg := strings.TrimSpace(c.Message().Payload)
+	num, err := getReminderNumber(arg)
+	if err != nil {
+		return c.Send("Ошибка: укажите корректный номер напоминания из списка")
+	}
+	reminders, err := h.getReminders(c.Chat().ID)
+	if err != nil {
+		return c.Send("Ошибка при получении списка напоминаний")
+	}
+	if num > len(reminders) {
+		return c.Send("Нет напоминания с таким номером")
+	}
+	rem := reminders[num-1]
+	if err := do(rem.ID); err != nil {
+		return c.Send(fmt.Sprintf("Ошибка при %s напоминания", action))
+	}
+	return c.Send(fmt.Sprintf("%s Напоминание %s!", map[string]string{"delete": "🗑️", "pause": "⏸️", "resume": "▶️"}[action], map[string]string{"delete": "удалено", "pause": "поставлено на паузу", "resume": "возобновлено"}[action]))
 }
 
 func (h *Handler) onDelete(c tele.Context) error {
-	userID := c.Sender().ID
-	chatID := c.Chat().ID
-	arg := strings.TrimSpace(c.Message().Payload)
-
-	if arg == "" {
-		return c.Send("Формат: /delete <номер из списка>. Например: /delete 2")
-	}
-	num, err := strconv.Atoi(arg)
-	if err != nil || num <= 0 {
-		slog.Warn("Invalid delete reminder number", "user_id", userID, "chat_id", chatID, "input", arg)
-		return c.Send("Ошибка: укажите корректный номер напоминания из списка")
-	}
-
-	reminders, err := h.Usecase.ListReminders(context.Background(), chatID)
-	if err != nil {
-		slog.Error("Failed to get reminders for deletion", "user_id", userID, "chat_id", chatID, "error", err)
-		return c.Send("Ошибка при получении списка напоминаний")
-	}
-	if num > len(reminders) {
-		slog.Warn("Delete reminder number out of range", "user_id", userID, "chat_id", chatID, "number", num, "total", len(reminders))
-		return c.Send("Нет напоминания с таким номером")
-	}
-
-	rem := reminders[num-1]
-	err = h.Usecase.DeleteReminder(context.Background(), rem.ID)
-	if err != nil {
-		slog.Error("Failed to delete reminder", "user_id", userID, "chat_id", chatID, "reminder_id", rem.ID, "error", err)
-		return c.Send("Ошибка при удалении напоминания")
-	}
-
-	slog.Info("Reminder deleted", "user_id", userID, "chat_id", chatID, "reminder_id", rem.ID, "text", rem.Text)
-	return c.Send("🗑️ Напоминание удалено!")
+	return h.handleReminderAction(c, "delete", func(remID int64) error {
+		return h.Usecase.DeleteReminder(context.Background(), remID)
+	})
 }
 
 func (h *Handler) onPause(c tele.Context) error {
-	userID := c.Sender().ID
-	chatID := c.Chat().ID
-	arg := strings.TrimSpace(c.Message().Payload)
-
-	if arg == "" {
-		return c.Send("Формат: /pause <номер из списка>. Например: /pause 2")
-	}
-	num, err := strconv.Atoi(arg)
-	if err != nil || num <= 0 {
-		slog.Warn("Invalid pause reminder number", "user_id", userID, "chat_id", chatID, "input", arg)
-		return c.Send("Ошибка: укажите корректный номер напоминания из списка")
-	}
-
-	reminders, err := h.Usecase.ListReminders(context.Background(), chatID)
-	if err != nil {
-		slog.Error("Failed to get reminders for pause", "user_id", userID, "chat_id", chatID, "error", err)
-		return c.Send("Ошибка при получении списка напоминаний")
-	}
-	if num > len(reminders) {
-		slog.Warn("Pause reminder number out of range", "user_id", userID, "chat_id", chatID, "number", num, "total", len(reminders))
-		return c.Send("Нет напоминания с таким номером")
-	}
-
-	rem := reminders[num-1]
-	err = h.Usecase.PauseReminder(context.Background(), rem.ID)
-	if err != nil {
-		slog.Error("Failed to pause reminder", "user_id", userID, "chat_id", chatID, "reminder_id", rem.ID, "error", err)
-		return c.Send("Ошибка при паузе напоминания")
-	}
-
-	slog.Info("Reminder paused", "user_id", userID, "chat_id", chatID, "reminder_id", rem.ID, "text", rem.Text)
-	return c.Send("⏸️ Напоминание поставлено на паузу!")
+	return h.handleReminderAction(c, "pause", func(remID int64) error {
+		return h.Usecase.PauseReminder(context.Background(), remID)
+	})
 }
 
 func (h *Handler) onResume(c tele.Context) error {
-	userID := c.Sender().ID
-	chatID := c.Chat().ID
-	arg := strings.TrimSpace(c.Message().Payload)
-
-	if arg == "" {
-		return c.Send("Формат: /resume <номер из списка>. Например: /resume 2")
-	}
-	num, err := strconv.Atoi(arg)
-	if err != nil || num <= 0 {
-		slog.Warn("Invalid resume reminder number", "user_id", userID, "chat_id", chatID, "input", arg)
-		return c.Send("Ошибка: укажите корректный номер напоминания из списка")
-	}
-
-	reminders, err := h.Usecase.ListReminders(context.Background(), chatID)
-	if err != nil {
-		slog.Error("Failed to get reminders for resume", "user_id", userID, "chat_id", chatID, "error", err)
-		return c.Send("Ошибка при получении списка напоминаний")
-	}
-	if num > len(reminders) {
-		slog.Warn("Resume reminder number out of range", "user_id", userID, "chat_id", chatID, "number", num, "total", len(reminders))
-		return c.Send("Нет напоминания с таким номером")
-	}
-
-	rem := reminders[num-1]
-	err = h.Usecase.ResumeReminder(context.Background(), rem.ID)
-	if err != nil {
-		slog.Error("Failed to resume reminder", "user_id", userID, "chat_id", chatID, "reminder_id", rem.ID, "error", err)
-		return c.Send("Ошибка при возобновлении напоминания")
-	}
-
-	slog.Info("Reminder resumed", "user_id", userID, "chat_id", chatID, "reminder_id", rem.ID, "text", rem.Text)
-	return c.Send("▶️ Напоминание возобновлено!")
+	return h.handleReminderAction(c, "resume", func(remID int64) error {
+		return h.Usecase.ResumeReminder(context.Background(), remID)
+	})
 }
 
 func (h *Handler) onTimezone(c tele.Context) error {
-	userID := c.Sender().ID
-	chatID := c.Chat().ID
-	slog.Info("User requested timezone setup", "user_id", userID, "chat_id", chatID)
-
-	// Create session for timezone input
-	session := &AddReminderSession{
-		UserID: userID,
-		ChatID: chatID,
+	h.Session.Set(&AddReminderSession{
+		UserID: c.Sender().ID,
+		ChatID: c.Chat().ID,
 		Step:   StepTimezone,
-	}
-	h.Session.Set(session)
-
+	})
 	return c.Send("🌍 Введите ваш часовой пояс в формате IANA (например, Europe/Moscow, America/New_York, Asia/Tokyo):")
 }
