@@ -1,0 +1,5 @@
+# Configuration file for dory-reminder-bot
+env: dev  # dev or prod
+
+telegram:
+  token: ""  # Will be loaded from TELEGRAM_TOKEN env variable 
