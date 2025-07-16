@@ -19,14 +19,6 @@ var (
 	btnHelpAdd    = mainMenu.Data("➕ Добавить напоминание", "help_add")
 	btnHelpList   = mainMenu.Data("📋 Список напоминаний", "help_list")
 	btnHelpManage = mainMenu.Data("⚙️ Управление", "help_manage")
-
-	btnMonday    = addMenu.Data("Пн", "weekday_1")
-	btnTuesday   = addMenu.Data("Вт", "weekday_2")
-	btnWednesday = addMenu.Data("Ср", "weekday_3")
-	btnThursday  = addMenu.Data("Чт", "weekday_4")
-	btnFriday    = addMenu.Data("Пт", "weekday_5")
-	btnSaturday  = addMenu.Data("Сб", "weekday_6")
-	btnSunday    = addMenu.Data("Вс", "weekday_0")
 )
 
 func init() {
@@ -47,6 +39,13 @@ func init() {
 
 func WeekdaysMenu() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
+	btnMonday := m.Data("Пн", "weekday_1")
+	btnTuesday := m.Data("Вт", "weekday_2")
+	btnWednesday := m.Data("Ср", "weekday_3")
+	btnThursday := m.Data("Чт", "weekday_4")
+	btnFriday := m.Data("Пт", "weekday_5")
+	btnSaturday := m.Data("Сб", "weekday_6")
+	btnSunday := m.Data("Вс", "weekday_0")
 	m.Inline(
 		m.Row(btnMonday, btnTuesday, btnWednesday, btnThursday, btnFriday, btnSaturday, btnSunday),
 	)

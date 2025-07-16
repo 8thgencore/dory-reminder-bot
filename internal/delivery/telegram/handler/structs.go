@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
 	tele "gopkg.in/telebot.v4"
 )
 
@@ -11,14 +13,18 @@ type Handler struct {
 	Bot         *tele.Bot
 	Usecase     usecase.ReminderUsecase
 	UserUsecase usecase.UserUsecase
-	Session     *SessionManager
+	Session     *session.SessionManager
 }
 
 func NewHandler(bot *tele.Bot, uc usecase.ReminderUsecase, userUc usecase.UserUsecase) *Handler {
-	return &Handler{Bot: bot, Usecase: uc, UserUsecase: userUc, Session: NewSessionManager()}
+	return &Handler{Bot: bot, Usecase: uc, UserUsecase: userUc, Session: session.NewSessionManager()}
 }
 
 func (h *Handler) Register() {
+	h.Bot.Handle("/start", func(c tele.Context) error {
+		return h.HandleStart(c, h.UserUsecase)
+	})
+	h.Bot.Handle("/help", h.HandleHelp)
 	h.Bot.Handle("/add", h.onAdd)
 	h.Bot.Handle(&btnToday, h.cbAddToday)
 	h.Bot.Handle(&btnTomorrow, h.cbAddTomorrow)
@@ -37,8 +43,16 @@ func (h *Handler) Register() {
 	h.Bot.Handle("/timezone", h.onTimezone)
 	h.Bot.Handle(tele.OnText, h.onText)
 	h.Bot.Handle(tele.OnCallback, func(c tele.Context) error {
-		if strings.HasPrefix(c.Callback().Data, "rem_page_") {
+		slog.Info("OnCallback", "data", c.Callback().Data)
+		callbackData := strings.TrimSpace(c.Callback().Data)
+		if strings.HasPrefix(callbackData, "rem_page_") {
 			return h.onList(c)
+		}
+		if strings.HasPrefix(callbackData, "weekday_") {
+			return h.HandleWeekdayCallback(c)
+		}
+		if strings.HasPrefix(callbackData, "month_") {
+			return h.HandleMonthCallback(c)
 		}
 		return nil
 	})

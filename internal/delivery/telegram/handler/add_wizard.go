@@ -2,50 +2,64 @@ package handler
 
 import (
 	"context"
-	"regexp"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/pkg/validator"
 	tele "gopkg.in/telebot.v4"
 )
 
+// Типы напоминаний как константы
+const (
+	ReminderTypeToday    = "today"
+	ReminderTypeTomorrow = "tomorrow"
+	ReminderTypeEveryDay = "everyday"
+	ReminderTypeWeek     = "week"
+	ReminderTypeNDays    = "ndays"
+	ReminderTypeMonth    = "month"
+	ReminderTypeYear     = "year"
+	ReminderTypeDate     = "date"
+	ReminderTypeMultiDay = "multiday"
+)
+
 func getAddReminderMessage(typ string) string {
 	switch typ {
-	case "today":
+	case ReminderTypeToday:
 		return "Во сколько напомнить сегодня? (например, 15:00)"
-	case "tomorrow":
+	case ReminderTypeTomorrow:
 		return "Во сколько напомнить завтра? (например, 15:00)"
-	case "everyday":
+	case ReminderTypeEveryDay:
 		return "Во сколько напоминать каждый день? (например, 09:00)"
-	case "week":
+	case ReminderTypeWeek:
 		return "В какой день недели? (например: понедельник)"
-	case "ndays":
+	case ReminderTypeNDays:
 		return "Через сколько дней повторять? Например: каждые 10 дней в 12:00"
-	case "month":
+	case ReminderTypeMonth:
 		return "В какой день месяца и во сколько? Например: 5 число 12:00"
-	case "year":
+	case ReminderTypeYear:
 		return "В какую дату и во сколько? Например: 13 июня 15:00"
-	case "date":
+	case ReminderTypeDate:
 		return "Введите дату и время: например, 13.06.2025 15:00"
-	case "multiday":
+	case ReminderTypeMultiDay:
 		return "Во сколько? (например: 09:00, 14:00, 20:00)"
 	default:
 		return "Неизвестный тип напоминания"
 	}
 }
 
-func (h *Handler) getSession(chatID, userID int64) *AddReminderSession {
+func (h *Handler) getSession(chatID, userID int64) *session.AddReminderSession {
 	sess := h.Session.Get(chatID, userID)
 	if sess == nil {
-		sess = &AddReminderSession{UserID: userID, ChatID: chatID, Step: StepType}
+		sess = &session.AddReminderSession{UserID: userID, ChatID: chatID, Step: session.StepType}
 	}
 	return sess
 }
 
-func (h *Handler) updateSession(sess *AddReminderSession) {
+func (h *Handler) updateSession(sess *session.AddReminderSession) {
 	h.Session.Set(sess)
 }
 
@@ -54,94 +68,131 @@ func (h *Handler) HandleAddTypeCallback(c tele.Context, typ string) error {
 	chatID := c.Chat().ID
 	sess := h.getSession(chatID, userID)
 	sess.Type = typ
-	if typ == "week" {
-		sess.Step = StepInterval
+	if typ == ReminderTypeWeek {
+		sess.Step = session.StepInterval
 		h.updateSession(sess)
 		return c.Send("Выберите день недели:", WeekdaysMenu())
 	}
-	sess.Step = StepTime
+	if typ == ReminderTypeMonth {
+		sess.Step = session.StepInterval
+		h.updateSession(sess)
+		return c.Send("Введите день месяца (1-31):")
+	}
+	if typ == ReminderTypeYear {
+		sess.Step = session.StepInterval
+		h.updateSession(sess)
+		return c.Send("Введите дату в формате ДД.ММ:")
+	}
+	if typ == ReminderTypeNDays {
+		sess.Step = session.StepDate
+		h.updateSession(sess)
+		return c.Send("Введите дату старта в формате ДД.ММ.ГГГГ:")
+	}
+	sess.Step = session.StepTime
 	h.updateSession(sess)
 	msg := getAddReminderMessage(typ)
 	return c.Send(msg)
 }
 
-func (h *Handler) handleStepTime(c tele.Context, sess *AddReminderSession) error {
-	t := strings.TrimSpace(c.Text())
-	if !validator.IsTime(t) && sess.Type != "multiday" {
-		return c.Send("Пожалуйста, введите время в формате 15:00")
-	}
-	sess.Time = t
-	sess.Step = StepText
-	h.updateSession(sess)
-	return c.Send("Введите текст напоминания:")
-}
-
-func (h *Handler) handleStepInterval(c tele.Context, sess *AddReminderSession) error {
+func (h *Handler) handleStepInterval(c tele.Context, sess *session.AddReminderSession) error {
 	val := strings.TrimSpace(c.Text())
+	slog.Info("[handleStepInterval] step=%v type=%v val='%s' date='%s' interval=%d", sess.Step, sess.Type, val, sess.Date, sess.Interval)
 	switch sess.Type {
-	case "week":
+	case ReminderTypeWeek:
 		weekday, ok := parseWeekday(val)
 		if !ok {
 			return c.Send("Пожалуйста, введите день недели (например, понедельник)")
 		}
 		sess.Interval = weekday
-		sess.Step = StepTime
+		sess.Step = session.StepTime
 		h.updateSession(sess)
+		slog.Info("[handleStepInterval] set weekday=%d, next step=StepTime", weekday)
 		return c.Send("Во сколько? (например: 09:00)")
-	case "month":
-		// Число месяца
+	case ReminderTypeMonth:
 		if !validator.IsInterval(val) {
 			return c.Send("Пожалуйста, введите число месяца от 1 до 31")
 		}
 		n, _ := strconv.Atoi(val)
 		sess.Interval = n
-		sess.Step = StepText
+		sess.Step = session.StepTime
 		h.updateSession(sess)
-		return c.Send("Введите текст напоминания:")
-	case "year":
-		// Дата в формате ДД.ММ
+		slog.Info("[handleStepInterval] set month=%d, next step=StepTime", n)
+		return c.Send("Во сколько? (например: 09:00)")
+	case ReminderTypeYear:
 		if !validator.IsDateDDMM(val) {
 			return c.Send("Пожалуйста, введите дату в формате ДД.ММ (например, 13.06)")
 		}
 		sess.Date = val
-		sess.Step = StepText
+		sess.Step = session.StepTime
 		h.updateSession(sess)
-		return c.Send("Введите текст напоминания:")
-	case "ndays":
-		// Интервал в днях
+		slog.Info("[handleStepInterval] set year_date='%s', next step=StepTime", val)
+		return c.Send("Во сколько? (например: 09:00)")
+	case ReminderTypeNDays:
 		if !validator.IsInterval(val) {
 			return c.Send("Пожалуйста, введите интервал в днях (целое число > 0)")
 		}
 		n, _ := strconv.Atoi(val)
 		sess.Interval = n
-		sess.Step = StepText
+		sess.Step = session.StepTime
 		h.updateSession(sess)
-		return c.Send("Введите текст напоминания:")
-	case "multiday":
-		times := parseMultiTimes(val)
-		if len(times) == 0 {
-			return c.Send("Пожалуйста, введите хотя бы одно время через запятую (например, 09:00, 14:00)")
-		}
-		sess.Time = strings.Join(times, ",")
-		sess.Step = StepText
-		h.updateSession(sess)
-		return c.Send("Введите текст напоминания:")
+		slog.Info("[handleStepInterval] set ndays_interval=%d, next step=StepTime", n)
+		return c.Send("Во сколько? (например: 09:00)")
 	}
 	return nil
 }
 
-func (h *Handler) handleStepText(c tele.Context, sess *AddReminderSession) error {
+func (h *Handler) handleStepDate(c tele.Context, sess *session.AddReminderSession) error {
+	val := strings.TrimSpace(c.Text())
+	slog.Info("[handleStepDate] step=%v type=%v val='%s' date='%s' interval=%d", sess.Step, sess.Type, val, sess.Date, sess.Interval)
+	if sess.Type == ReminderTypeNDays {
+		// Если дата уже есть, значит сейчас ожидается ввод интервала
+		if sess.Date != "" && sess.Interval == 0 {
+			if !validator.IsInterval(val) {
+				return c.Send("Пожалуйста, введите интервал в днях (целое число > 0)")
+			}
+			n, _ := strconv.Atoi(val)
+			sess.Interval = n
+			sess.Step = session.StepTime
+			h.updateSession(sess)
+			slog.Info("[handleStepDate] set interval=%d, next step=StepTime", n)
+			return c.Send("Во сколько? (например: 09:00)")
+		}
+		// Если дата ещё не введена (fallback, но по логике сюда не попадём)
+		if !validator.IsDateDDMMYYYY(val) {
+			return c.Send("Пожалуйста, введите дату старта в формате ДД.ММ.ГГГГ")
+		}
+		sess.Date = val
+		sess.Step = session.StepInterval
+		h.updateSession(sess)
+		slog.Info("[handleStepDate] set date='%s', next step=StepInterval", val)
+		return c.Send("Введите интервал в днях (целое число > 0):")
+	}
+	return nil
+}
+
+func (h *Handler) handleStepTime(c tele.Context, sess *session.AddReminderSession) error {
+	t := strings.TrimSpace(c.Text())
+	if !validator.IsTime(t) && sess.Type != ReminderTypeMultiDay {
+		return c.Send("Пожалуйста, введите время в формате 15:00")
+	}
+	sess.Time = t
+	sess.Step = session.StepText
+	h.updateSession(sess)
+	return c.Send("Введите текст напоминания:")
+}
+
+func (h *Handler) handleStepText(c tele.Context, sess *session.AddReminderSession) error {
 	txt := strings.TrimSpace(c.Text())
 	if !validator.IsNotEmpty(txt) {
 		return c.Send("Пожалуйста, введите текст напоминания")
 	}
 	sess.Text = txt
-	sess.Step = StepConfirm
+	sess.Step = session.StepConfirm
 	h.updateSession(sess)
 	return h.handleStepConfirm(c, sess)
 }
 
-func (h *Handler) handleStepConfirm(c tele.Context, sess *AddReminderSession) error {
+func (h *Handler) handleStepConfirm(c tele.Context, sess *session.AddReminderSession) error {
 	// Создаём напоминание
 	err := h.createReminderFromSession(sess)
 	h.Session.Delete(sess.ChatID, sess.UserID)
@@ -158,13 +209,24 @@ func (h *Handler) HandleAddWizardText(c tele.Context) error {
 	if sess == nil {
 		return nil
 	}
+	logMsg := "[HandleAddWizardText] chatID=%d userID=%d step=%v type=%v text='%s'"
+	slog.Info(
+		logMsg,
+		"chatID", chatID,
+		"userID", userID,
+		"step", sess.Step,
+		"type", sess.Type,
+		"text", c.Text(),
+	)
 	switch sess.Step {
-	case StepTime:
+	case session.StepTime:
 		return h.handleStepTime(c, sess)
-	case StepInterval:
+	case session.StepInterval:
 		return h.handleStepInterval(c, sess)
-	case StepText:
+	case session.StepText:
 		return h.handleStepText(c, sess)
+	case session.StepDate:
+		return h.handleStepDate(c, sess)
 	}
 	return nil
 }
@@ -257,7 +319,7 @@ func getNextTimeMultiDay(now time.Time, times []string) time.Time {
 }
 
 // convertSessionToReminder converts an AddReminderSession to a domain Reminder
-func convertSessionToReminder(sess *AddReminderSession, nextTime time.Time) *domain.Reminder {
+func convertSessionToReminder(sess *session.AddReminderSession, nextTime time.Time) *domain.Reminder {
 	return &domain.Reminder{
 		ChatID:      sess.ChatID,
 		UserID:      sess.UserID,
@@ -275,7 +337,7 @@ func convertSessionToReminder(sess *AddReminderSession, nextTime time.Time) *dom
 // typeToRepeat converts a string reminder type to a domain RepeatType
 func typeToRepeat(typ string) domain.RepeatType {
 	switch typ {
-	case "everyday":
+	case ReminderTypeEveryDay:
 		return domain.RepeatEveryDay
 	default:
 		return domain.RepeatNone
@@ -289,60 +351,48 @@ func parseWeekday(s string) (int, bool) {
 	return idx, ok
 }
 
-func parseMultiTimes(s string) []string {
-	parts := strings.Split(s, ",")
-	var res []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if matched, _ := regexp.MatchString(`^\d{2}:\d{2}$`, p); matched {
-			res = append(res, p)
-		}
-	}
-	return res
-}
-
-func (h *Handler) createReminderFromSession(sess *AddReminderSession) error {
+func (h *Handler) createReminderFromSession(sess *session.AddReminderSession) error {
 	now := time.Now()
 	var nextTime time.Time
 	t, _ := time.Parse("15:04", sess.Time)
 	switch sess.Type {
-	case "today":
+	case ReminderTypeToday:
 		nextTime = getNextTimeToday(now, t)
-	case "tomorrow":
+	case ReminderTypeTomorrow:
 		nextTime = getNextTimeTomorrow(now, t)
-	case "everyday":
+	case ReminderTypeEveryDay:
 		nextTime = getNextTimeEveryDay(now, t)
-	case "week":
+	case ReminderTypeWeek:
 		nextTime = getNextTimeWeek(now, t, sess.Interval)
-	case "month":
+	case ReminderTypeMonth:
 		nextTime = getNextTimeMonth(now, t, sess.Interval)
-	case "year":
+	case ReminderTypeYear:
 		nextTime = getNextTimeYear(now, t, sess.Date)
-	case "date":
+	case ReminderTypeDate:
 		nextTime = getNextTimeDate(t, sess.Date)
-	case "ndays":
+	case ReminderTypeNDays:
 		nextTime = getNextTimeNDays(now, t, sess.Interval)
-	case "multiday":
+	case ReminderTypeMultiDay:
 		times := strings.Split(sess.Time, ",")
 		nextTime = getNextTimeMultiDay(now, times)
 	}
 
 	rem := convertSessionToReminder(sess, nextTime)
 	// Для week/month/year/date/multiday сохраняем доп. параметры
-	if sess.Type == "week" {
+	if sess.Type == ReminderTypeWeek {
 		rem.Repeat = domain.RepeatEveryWeek
 		rem.RepeatDays = []int{sess.Interval}
-	} else if sess.Type == "month" {
+	} else if sess.Type == ReminderTypeMonth {
 		rem.Repeat = domain.RepeatEveryMonth
 		rem.RepeatDays = []int{sess.Interval}
-	} else if sess.Type == "year" {
-		rem.Repeat = domain.RepeatNone // раз в год — можно расширить
-	} else if sess.Type == "date" {
+	} else if sess.Type == ReminderTypeYear {
+		rem.Repeat = domain.RepeatEveryYear
+	} else if sess.Type == ReminderTypeDate {
 		rem.Repeat = domain.RepeatNone
-	} else if sess.Type == "ndays" {
+	} else if sess.Type == ReminderTypeNDays {
 		rem.Repeat = domain.RepeatEveryNDays
 		rem.RepeatEvery = sess.Interval
-	} else if sess.Type == "multiday" {
+	} else if sess.Type == ReminderTypeMultiDay {
 		rem.Repeat = domain.RepeatEveryDay
 		// RepeatDays можно использовать для хранения времён, если нужно
 	}
@@ -352,24 +402,53 @@ func (h *Handler) createReminderFromSession(sess *AddReminderSession) error {
 
 // Добавить обработчик inline-кнопок для дней недели
 func (h *Handler) HandleWeekdayCallback(c tele.Context) error {
-	c.Respond()
+	data := strings.TrimSpace(c.Callback().Data)
+
+	slog.Info("HandleWeekdayCallback", "callback_data", data)
 	userID := c.Sender().ID
 	chatID := c.Chat().ID
 	sess := h.getSession(chatID, userID)
-	if sess == nil || sess.Type != "week" || sess.Step != StepInterval {
+	if sess != nil {
+		slog.Info("Session state", "type", sess.Type, "step", sess.Step)
+	}
+	c.Respond()
+	if sess == nil || sess.Type != ReminderTypeWeek || sess.Step != session.StepInterval {
 		return c.Send("Ошибка: не ожидается выбор дня недели.")
 	}
-	data := c.Callback().Data
 	if !strings.HasPrefix(data, "weekday_") {
 		return c.Send("Ошибка: неверный формат дня недели.")
 	}
-	weekdayStr := strings.TrimPrefix(data, "weekday_")
+	weekdayStr := strings.TrimSpace(strings.TrimPrefix(data, "weekday_"))
 	weekday, err := strconv.Atoi(weekdayStr)
 	if err != nil || weekday < 0 || weekday > 6 {
 		return c.Send("Ошибка: неверный день недели.")
 	}
 	sess.Interval = weekday
-	sess.Step = StepTime
+	sess.Step = session.StepTime
 	h.updateSession(sess)
 	return c.Send("Во сколько? (например: 09:00)")
+}
+
+// Обработчик inline-кнопок для месяцев
+func (h *Handler) HandleMonthCallback(c tele.Context) error {
+	data := strings.TrimSpace(c.Callback().Data)
+	slog.Info("HandleMonthCallback", "callback_data", data)
+	userID := c.Sender().ID
+	chatID := c.Chat().ID
+	sess := h.getSession(chatID, userID)
+	if sess == nil || sess.Type != ReminderTypeMonth || sess.Step != session.StepInterval {
+		return c.Send("Ошибка: не ожидается выбор месяца.")
+	}
+	if !strings.HasPrefix(data, "month_") {
+		return c.Send("Ошибка: неверный формат месяца.")
+	}
+	monthStr := strings.TrimSpace(strings.TrimPrefix(data, "month_"))
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 1 || month > 12 {
+		return c.Send("Ошибка: неверный месяц.")
+	}
+	sess.Interval = month
+	sess.Step = session.StepText
+	h.updateSession(sess)
+	return c.Send("Введите текст напоминания:")
 }

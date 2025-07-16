@@ -86,14 +86,6 @@ func main() {
 
 	telegram.StartScheduler(bot, uc)
 
-	bot.Handle("/start", func(c tele.Context) error {
-		return handler.HandleStart(c, userUc)
-	})
-
-	bot.Handle("/help", func(c tele.Context) error {
-		return handler.HandleHelp(c)
-	})
-
 	log.Info("Bot started successfully")
 	bot.Start()
 }

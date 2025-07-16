@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
 	usecase_domain "github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	"github.com/8thgencore/dory-reminder-bot/pkg/validator"
@@ -105,10 +106,10 @@ func (h *Handler) cbAddDate(c tele.Context) error     { return h.HandleAddTypeCa
 // Обработка текстовых сообщений (мастер добавления/таймзона)
 func (h *Handler) onText(c tele.Context) error {
 	sess := h.Session.Get(c.Chat().ID, c.Sender().ID)
-	if sess != nil && sess.Step == StepTimezone {
+	if sess != nil && sess.Step == session.StepTimezone {
 		return h.HandleTimezoneText(c)
 	}
-	if sess != nil && (sess.Step == StepTime || sess.Step == StepText) {
+	if sess != nil && (sess.Step == session.StepTime || sess.Step == session.StepText || sess.Step == session.StepInterval) {
 		return h.HandleAddWizardText(c)
 	}
 	return nil
@@ -267,10 +268,10 @@ func (h *Handler) onResume(c tele.Context) error {
 }
 
 func (h *Handler) onTimezone(c tele.Context) error {
-	h.Session.Set(&AddReminderSession{
+	h.Session.Set(&session.AddReminderSession{
 		UserID: c.Sender().ID,
 		ChatID: c.Chat().ID,
-		Step:   StepTimezone,
+		Step:   session.StepTimezone,
 	})
 	return c.Send("🌍 Введите ваш часовой пояс в формате IANA (например, Europe/Moscow, America/New_York, Asia/Tokyo):")
 }

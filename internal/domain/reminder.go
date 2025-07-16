@@ -10,6 +10,7 @@ const (
 	RepeatEveryWeek
 	RepeatEveryMonth
 	RepeatEveryNDays
+	RepeatEveryYear // для ежегодных напоминаний
 )
 
 type Reminder struct {
