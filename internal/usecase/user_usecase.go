@@ -29,30 +29,14 @@ func (u *userUsecase) GetOrCreateUser(
 	chatID, userID int64,
 	username, firstName, lastName string,
 ) (*domain.User, error) {
+	// Сначала пытаемся найти пользователя в текущем чате
 	user, err := u.userRepo.GetByChatAndUser(ctx, chatID, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	if user == nil {
-		// Create new user
-		now := time.Now()
-		user = &domain.User{
-			ID:        userID,
-			ChatID:    chatID,
-			Username:  username,
-			FirstName: firstName,
-			LastName:  lastName,
-			Timezone:  "",
-			CreatedAt: now,
-			UpdatedAt: now,
-		}
-		err = u.userRepo.Create(ctx, user)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		// Update existing user info
+	if user != nil {
+		// Пользователь найден в текущем чате, обновляем информацию
 		user.Username = username
 		user.FirstName = firstName
 		user.LastName = lastName
@@ -61,6 +45,24 @@ func (u *userUsecase) GetOrCreateUser(
 		if err != nil {
 			return nil, err
 		}
+		return user, nil
+	}
+
+	// Пользователь не найден в текущем чате, создаем нового
+	now := time.Now()
+	user = &domain.User{
+		ChatID:    chatID,
+		ID:        userID,
+		Username:  username,
+		FirstName: firstName,
+		LastName:  lastName,
+		Timezone:  "",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	err = u.userRepo.Create(ctx, user)
+	if err != nil {
+		return nil, err
 	}
 
 	return user, nil

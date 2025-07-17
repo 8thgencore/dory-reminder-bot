@@ -30,15 +30,15 @@ func Migrate(db *sql.DB) error {
 	// Create users table
 	_, err = db.Exec(`
 	CREATE TABLE IF NOT EXISTS users (
-		id INTEGER PRIMARY KEY,
 		chat_id INTEGER NOT NULL,
+		user_id INTEGER NOT NULL,
 		username TEXT,
 		first_name TEXT,
 		last_name TEXT,
 		timezone TEXT,
 		created_at DATETIME NOT NULL,
 		updated_at DATETIME NOT NULL,
-		UNIQUE(id, chat_id)
+		PRIMARY KEY(chat_id, user_id)
 	);
 	`)
 

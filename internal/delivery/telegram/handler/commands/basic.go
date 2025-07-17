@@ -27,19 +27,26 @@ func NewBasicCommands(userUc usecase.UserUsecase, getMainMenu func() *tele.Reply
 func (bc *BasicCommands) HandleStart(c tele.Context) error {
 	userID := c.Sender().ID
 	chatID := c.Chat().ID
-	username := c.Sender().Username
-	firstName := c.Sender().FirstName
-	lastName := c.Sender().LastName
+
+	// Безопасное получение данных пользователя (может быть nil в группах)
+	var username, firstName, lastName string
+	if c.Sender() != nil {
+		username = c.Sender().Username
+		firstName = c.Sender().FirstName
+		lastName = c.Sender().LastName
+	}
 
 	slog.Info("User started bot", "user_id", userID, "chat_id", chatID, "username", username)
 
 	_, err := bc.UserUsecase.GetOrCreateUser(context.Background(), chatID, userID, username, firstName, lastName)
 	if err != nil {
+		slog.Error("Failed to create user", "user_id", userID, "chat_id", chatID, "error", err)
 		return c.Send(texts.ErrInitUser)
 	}
 
 	hasTZ, err := bc.UserUsecase.HasTimezone(context.Background(), chatID, userID)
 	if err != nil {
+		slog.Error("Failed to check timezone", "user_id", userID, "chat_id", chatID, "error", err)
 		return c.Send(texts.ErrCheckSettings)
 	}
 

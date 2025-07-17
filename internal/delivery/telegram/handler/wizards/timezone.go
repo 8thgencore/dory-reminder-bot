@@ -48,7 +48,14 @@ func (tw *TimezoneWizard) HandleTimezoneText(c tele.Context) error {
 		return c.Send(texts.UnknownTimezone)
 	}
 
-	err := tw.UserUsecase.SetTimezone(context.Background(), chatID, userID, tz)
+	// Проверяем, была ли у пользователя таймзона ранее
+	hadTimezone, err := tw.UserUsecase.HasTimezone(context.Background(), chatID, userID)
+	if err != nil {
+		slog.Error("Failed to check timezone", "user_id", userID, "chat_id", chatID, "error", err)
+		hadTimezone = false // считаем что таймзоны не было
+	}
+
+	err = tw.UserUsecase.SetTimezone(context.Background(), chatID, userID, tz)
 	if err != nil {
 		slog.Error("Failed to set custom timezone", "user_id", userID, "chat_id", chatID, "timezone", tz, "error", err)
 		return c.Send("Ошибка при установке часового пояса")
@@ -57,6 +64,14 @@ func (tw *TimezoneWizard) HandleTimezoneText(c tele.Context) error {
 	tw.SessionManager.Delete(chatID, userID)
 
 	slog.Info("Custom timezone set", "user_id", userID, "chat_id", chatID, "timezone", tz)
-	// Показываем приветствие и help-меню сразу после установки таймзоны
-	return c.Send(texts.HelpMainMenu, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, tw.GetMainMenu())
+
+	// Показываем сообщение об успешной установке
+	successMsg := "✅ Часовой пояс успешно установлен: " + tz
+
+	// Приветственное сообщение показываем только при первой установке
+	if !hadTimezone {
+		return c.Send(successMsg+"\n\n"+texts.HelpMainMenu, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, tw.GetMainMenu())
+	}
+
+	return c.Send(successMsg)
 }
