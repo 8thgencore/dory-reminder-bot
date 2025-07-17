@@ -33,7 +33,7 @@ func NewHandler(bot *tele.Bot, reminderUc usecase.ReminderUsecase, userUc usecas
 		SessionMgr:        sessionMgr,
 		BasicCommands:     commands.NewBasicCommands(userUc, ui.GetMainMenu),
 		ReminderCRUD:      commands.NewReminderCRUD(reminderUc, userUc),
-		AddReminderWizard: wizards.NewAddReminderWizard(reminderUc, sessionMgr),
+		AddReminderWizard: wizards.NewAddReminderWizard(reminderUc, sessionMgr, userUc),
 		TimezoneWizard:    wizards.NewTimezoneWizard(userUc, sessionMgr, ui.GetMainMenu),
 	}
 

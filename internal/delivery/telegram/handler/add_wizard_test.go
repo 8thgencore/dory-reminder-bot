@@ -35,7 +35,7 @@ func (m *mockContext) Chat() *tele.Chat {
 // TestAddWizard_NDaysFlow проверяет сценарий добавления напоминания с типом ndays.
 func TestAddWizard_NDaysFlow(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := wizards.NewAddReminderWizard(nil, sessionMgr) // nil usecase для тестов
+	wizard := wizards.NewAddReminderWizard(nil, sessionMgr, nil) // nil usecase для тестов
 
 	// Шаг 1: пользователь выбрал тип "ndays", сессия ожидает дату
 	sess := &session.AddReminderSession{

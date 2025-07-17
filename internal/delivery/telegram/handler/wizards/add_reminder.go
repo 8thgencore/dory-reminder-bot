@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/ui"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/utils"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
-	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/texts"
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	"github.com/8thgencore/dory-reminder-bot/pkg/validator"
@@ -35,14 +35,16 @@ type AddReminderWizard struct {
 	ReminderUsecase usecase.ReminderUsecase
 	SessionManager  *session.SessionManager
 	TimeCalculator  *utils.TimeCalculator
+	UserUsecase     usecase.UserUsecase // добавлено
 }
 
 // NewAddReminderWizard создает новый экземпляр мастера
-func NewAddReminderWizard(reminderUc usecase.ReminderUsecase, sessionMgr *session.SessionManager) *AddReminderWizard {
+func NewAddReminderWizard(reminderUc usecase.ReminderUsecase, sessionMgr *session.SessionManager, userUc usecase.UserUsecase) *AddReminderWizard {
 	return &AddReminderWizard{
 		ReminderUsecase: reminderUc,
 		SessionManager:  sessionMgr,
 		TimeCalculator:  utils.NewTimeCalculator(),
+		UserUsecase:     userUc, // добавлено
 	}
 }
 
@@ -93,31 +95,37 @@ func (w *AddReminderWizard) HandleAddTypeCallback(c tele.Context, typ string) er
 	if typ == ReminderTypeWeek {
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
+		_ = c.Delete()
 		return c.Send(texts.PromptWeek, ui.WeekdaysMenu())
 	}
 	if typ == ReminderTypeMonth {
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
+		_ = c.Delete()
 		return c.Send(texts.ValidateEnterMonth)
 	}
 	if typ == ReminderTypeYear {
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
+		_ = c.Delete()
 		return c.Send(texts.ValidateEnterDateDDMM)
 	}
 	if typ == ReminderTypeNDays {
 		sess.Step = session.StepDate
 		w.updateSession(sess)
+		_ = c.Delete()
 		return c.Send(texts.ValidateEnterDate)
 	}
 	if typ == ReminderTypeDate {
 		sess.Step = session.StepDate
 		w.updateSession(sess)
+		_ = c.Delete()
 		return c.Send("Пожалуйста, введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ")
 	}
 
 	sess.Step = session.StepTime
 	w.updateSession(sess)
+	_ = c.Delete()
 	msg := getAddReminderMessage(typ)
 	return c.Send(msg)
 }
@@ -226,9 +234,6 @@ func (w *AddReminderWizard) handleStepInterval(c tele.Context, sess *session.Add
 		sess.Step = session.StepTime
 		w.updateSession(sess)
 		slog.Info("[handleStepInterval]", "set_ndays_interval", n, "next_step", "StepTime")
-		if err := c.Respond(); err != nil {
-			slog.Error("c.Respond error", "err", err)
-		}
 		return c.Send(texts.PromptEveryDay)
 	}
 	return nil
@@ -314,36 +319,49 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 
 	slog.Info("[createReminderFromSession] before calculation", "type", sess.Type, "date", sess.Date, "time", sess.Time, "interval", sess.Interval)
 
-	t, err := time.Parse("15:04", sess.Time)
+	// Получаем пользователя и его таймзону
+	user, err := w.UserUsecase.GetOrCreateUser(context.Background(), sess.ChatID, sess.UserID, "", "", "")
+	loc := time.Local
+	if err == nil && user != nil && user.Timezone != "" {
+		if l, err := time.LoadLocation(user.Timezone); err == nil {
+			loc = l
+		}
+	}
+
+	t, err := time.ParseInLocation("15:04", sess.Time, loc)
 	if err != nil {
 		slog.Warn("[createReminderFromSession] failed to parse time", "sess.Time", sess.Time, "err", err)
 	}
 
 	switch sess.Type {
 	case ReminderTypeToday:
-		nextTime = w.TimeCalculator.GetNextTimeToday(now, t)
+		nextTime = w.TimeCalculator.GetNextTimeToday(now.In(loc), t)
 	case ReminderTypeTomorrow:
-		nextTime = w.TimeCalculator.GetNextTimeTomorrow(now, t)
+		nextTime = w.TimeCalculator.GetNextTimeTomorrow(now.In(loc), t)
 	case ReminderTypeEveryDay:
-		nextTime = w.TimeCalculator.GetNextTimeEveryDay(now, t)
+		nextTime = w.TimeCalculator.GetNextTimeEveryDay(now.In(loc), t)
 	case ReminderTypeWeek:
-		nextTime = w.TimeCalculator.GetNextTimeWeek(now, t, sess.Interval)
+		nextTime = w.TimeCalculator.GetNextTimeWeek(now.In(loc), t, sess.Interval)
 	case ReminderTypeMonth:
-		nextTime = w.TimeCalculator.GetNextTimeMonth(now, t, sess.Interval)
+		nextTime = w.TimeCalculator.GetNextTimeMonth(now.In(loc), t, sess.Interval)
 	case ReminderTypeYear:
-		nextTime = w.TimeCalculator.GetNextTimeYear(now, t, sess.Date)
+		nextTime = w.TimeCalculator.GetNextTimeYear(now.In(loc), t, sess.Date)
 	case ReminderTypeDate:
 		nextTime = w.TimeCalculator.GetNextTimeDate(t, sess.Date)
 	case ReminderTypeNDays:
-		nextTime = w.TimeCalculator.GetNextTimeNDays(now, t, sess.Interval)
+		startTime, err := time.ParseInLocation("02.01.2006", sess.Date, loc)
+		if err != nil {
+			slog.Warn("[createReminderFromSession] failed to parse date", "sess.Date", sess.Date, "err", err)
+		}
+		nextTime = w.TimeCalculator.GetNextTimeNDays(startTime, t, sess.Interval)
 	case ReminderTypeMultiDay:
 		times := strings.Split(sess.Time, ",")
-		nextTime = w.TimeCalculator.GetNextTimeMultiDay(now, times)
+		nextTime = w.TimeCalculator.GetNextTimeMultiDay(now.In(loc), times)
 	}
 
 	slog.Info("[createReminderFromSession] calculated nextTime", "nextTime", nextTime, "sess.Date", sess.Date, "sess.Time", sess.Time)
 
-	rem := convertSessionToReminder(sess, nextTime)
+	rem := convertSessionToReminderWithTZ(sess, nextTime, user.Timezone)
 
 	// Для week/month/year/date/multiday сохраняем доп. параметры
 	switch sess.Type {
@@ -473,4 +491,20 @@ func (w *AddReminderWizard) HandleMonthCallback(c tele.Context) error {
 	sess.Step = session.StepText
 	w.updateSession(sess)
 	return c.Send(texts.ValidateEnterText)
+}
+
+// convertSessionToReminderWithTZ converts an AddReminderSession to a domain Reminder с учетом таймзоны
+func convertSessionToReminderWithTZ(sess *session.AddReminderSession, nextTime time.Time, tz string) *domain.Reminder {
+	return &domain.Reminder{
+		ChatID:      sess.ChatID,
+		UserID:      sess.UserID,
+		Text:        sess.Text,
+		NextTime:    nextTime,
+		Repeat:      typeToRepeat(sess.Type),
+		RepeatEvery: sess.Interval,
+		Paused:      false,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		Timezone:    tz,
+	}
 }

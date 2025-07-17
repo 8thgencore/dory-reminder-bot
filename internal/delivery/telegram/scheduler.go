@@ -68,7 +68,7 @@ func calcNextTimeForward(r *domain.Reminder, now time.Time) time.Time {
 		case domain.RepeatEveryMonth:
 			next = next.AddDate(0, 1, 0)
 		case domain.RepeatEveryNDays:
-			next = next.Add(time.Duration(r.RepeatEvery) * 24 * time.Hour)
+			next = next.AddDate(0, 0, r.RepeatEvery)
 		case domain.RepeatEveryYear:
 			next = next.AddDate(1, 0, 0)
 		default:

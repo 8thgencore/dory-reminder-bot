@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/ui"
-	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/texts"
 	usecase_domain "github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	"github.com/8thgencore/dory-reminder-bot/pkg/validator"
@@ -76,9 +76,12 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	}
 
 	page := 0
-	if cb := c.Callback(); cb != nil && strings.HasPrefix(cb.Data, "rem_page_") {
-		if p, err := strconv.Atoi(strings.TrimPrefix(cb.Data, "rem_page_")); err == nil && p >= 0 {
-			page = p
+	if cb := c.Callback(); cb != nil {
+		data := strings.TrimSpace(cb.Data)
+		if strings.HasPrefix(data, "rem_page_") {
+			if p, err := strconv.Atoi(strings.TrimPrefix(data, "rem_page_")); err == nil && p >= 0 {
+				page = p
+			}
 		}
 	}
 

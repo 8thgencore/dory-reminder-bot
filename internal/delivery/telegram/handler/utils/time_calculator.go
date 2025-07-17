@@ -84,12 +84,9 @@ func (tc *TimeCalculator) GetNextTimeDate(t time.Time, date string) time.Time {
 }
 
 // GetNextTimeNDays вычисляет время для напоминания каждые N дней
-func (tc *TimeCalculator) GetNextTimeNDays(now time.Time, t time.Time, interval int) time.Time {
-	nextTime := time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, now.Location())
-	if nextTime.Before(now) {
-		nextTime = nextTime.Add(time.Duration(interval) * 24 * time.Hour)
-	}
-	return nextTime
+func (tc *TimeCalculator) GetNextTimeNDays(startTime time.Time, t time.Time, interval int) time.Time {
+	nextTime := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), t.Hour(), t.Minute(), 0, 0, startTime.Location())
+	return nextTime.AddDate(0, 0, interval)
 }
 
 // GetNextTimeMultiDay вычисляет время для напоминания несколько раз в день

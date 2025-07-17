@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/texts"
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	tele "gopkg.in/telebot.v4"
 )
