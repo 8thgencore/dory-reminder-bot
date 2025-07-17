@@ -3,6 +3,7 @@ package handler
 import (
 	"testing"
 
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/wizards"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
 	"github.com/stretchr/testify/assert"
 	tele "gopkg.in/telebot.v4"
@@ -33,18 +34,20 @@ func (m *mockContext) Chat() *tele.Chat {
 
 // TestAddWizard_NDaysFlow проверяет сценарий добавления напоминания с типом ndays.
 func TestAddWizard_NDaysFlow(t *testing.T) {
-	h := &Handler{Session: session.NewSessionManager()}
+	sessionMgr := session.NewSessionManager()
+	wizard := wizards.NewAddReminderWizard(nil, sessionMgr) // nil usecase для тестов
+
 	// Шаг 1: пользователь выбрал тип "ndays", сессия ожидает дату
 	sess := &session.AddReminderSession{
 		UserID: 1, ChatID: 1, Type: "ndays", Step: session.StepDate,
 	}
-	h.Session.Set(sess)
+	sessionMgr.Set(sess)
 
 	// Вводим дату старта
 	c := &mockContext{text: "13.06.2024"}
-	err := h.HandleAddWizardText(c)
+	err := wizard.HandleAddWizardText(c)
 	assert.NoError(t, err)
-	sess = h.Session.Get(1, 1)
+	sess = sessionMgr.Get(1, 1)
 	assert.Equal(t, "13.06.2024", sess.Date)
 	assert.Equal(t, session.StepInterval, sess.Step)
 	assert.NotEmpty(t, c.sendCalls)
@@ -52,9 +55,9 @@ func TestAddWizard_NDaysFlow(t *testing.T) {
 
 	// Вводим интервал
 	c2 := &mockContext{text: "10"}
-	err = h.HandleAddWizardText(c2)
+	err = wizard.HandleAddWizardText(c2)
 	assert.NoError(t, err)
-	sess = h.Session.Get(1, 1)
+	sess = sessionMgr.Get(1, 1)
 	assert.Equal(t, 10, sess.Interval)
 	assert.Equal(t, session.StepTime, sess.Step)
 	assert.NotEmpty(t, c2.sendCalls)
