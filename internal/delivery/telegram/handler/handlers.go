@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/texts"
 	usecase_domain "github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	"github.com/8thgencore/dory-reminder-bot/pkg/validator"
@@ -31,12 +32,17 @@ var (
 /timezone - установить часовой пояс`
 )
 
-// Проверка наличия таймзоны у пользователя
+// checkTimezone проверяет, установлен ли таймзона у пользователя.
 func (h *Handler) checkTimezone(c tele.Context) (bool, error) {
 	return h.UserUsecase.HasTimezone(context.Background(), c.Chat().ID, c.Sender().ID)
 }
 
-// Получение номера напоминания из команды
+// getReminders возвращает список напоминаний для чата.
+func (h *Handler) getReminders(chatID int64) ([]*usecase_domain.Reminder, error) {
+	return h.Usecase.ListReminders(context.Background(), chatID)
+}
+
+// getReminderNumber возвращает номер напоминания из строки аргумента.
 func getReminderNumber(arg string) (int, error) {
 	num, err := strconv.Atoi(strings.TrimSpace(arg))
 	if err != nil || num <= 0 {
@@ -45,11 +51,7 @@ func getReminderNumber(arg string) (int, error) {
 	return num, nil
 }
 
-// Получение списка напоминаний
-func (h *Handler) getReminders(chatID int64) ([]*usecase_domain.Reminder, error) {
-	return h.Usecase.ListReminders(context.Background(), chatID)
-}
-
+// HandleStart обрабатывает команду /start.
 func (h *Handler) HandleStart(c tele.Context, userUc usecase.UserUsecase) error {
 	userID := c.Sender().ID
 	chatID := c.Chat().ID
@@ -61,27 +63,28 @@ func (h *Handler) HandleStart(c tele.Context, userUc usecase.UserUsecase) error 
 
 	_, err := userUc.GetOrCreateUser(context.Background(), chatID, userID, username, firstName, lastName)
 	if err != nil {
-		return c.Send("Ошибка при инициализации пользователя")
+		return c.Send(texts.ErrInitUser)
 	}
 	hasTZ, err := userUc.HasTimezone(context.Background(), chatID, userID)
 	if err != nil {
-		return c.Send("Ошибка при проверке настроек пользователя")
+		return c.Send(texts.ErrCheckSettings)
 	}
 	if !hasTZ {
-		return c.Send(welcomeTextNoTZ)
+		return c.Send(texts.WelcomeTextNoTZ)
 	}
-	return c.Send(welcomeText, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, h.GetMainMenu())
+	return c.Send(texts.WelcomeText, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, h.GetMainMenu())
 }
 
+// HandleHelp обрабатывает команду /help.
 func (h *Handler) HandleHelp(c tele.Context) error {
 	slog.Info("User requested help", "user_id", c.Sender().ID, "chat_id", c.Chat().ID)
-	return c.Send(helpText)
+	return c.Send(texts.HelpText)
 }
 
 func (h *Handler) onAdd(c tele.Context) error {
 	hasTZ, err := h.checkTimezone(c)
 	if err != nil {
-		return c.Send("Ошибка при проверке настроек пользователя")
+		return c.Send(texts.ErrCheckSettings)
 	}
 	if !hasTZ {
 		return c.Send("⚠️ Сначала установите часовой пояс командой /timezone")
@@ -89,7 +92,7 @@ func (h *Handler) onAdd(c tele.Context) error {
 	if c.Message().Payload != "" {
 		return c.Send("Для создания напоминания используйте мастер через /add без параметров.")
 	}
-	return c.Send("Выберите тип напоминания:", addMenu)
+	return c.Send(texts.AddTypePrompt)
 }
 
 // Коллбэки для типов напоминаний
@@ -140,10 +143,10 @@ func formatRepeat(r *usecase_domain.Reminder) string {
 func (h *Handler) onList(c tele.Context) error {
 	reminders, err := h.getReminders(c.Chat().ID)
 	if err != nil {
-		return c.Send("Ошибка при получении списка напоминаний")
+		return c.Send(texts.ErrGetReminders)
 	}
 	if len(reminders) == 0 {
-		return c.Send("Нет напоминаний")
+		return c.Send(texts.ErrNoReminders)
 	}
 	page := 0
 	if cb := c.Callback(); cb != nil && strings.HasPrefix(cb.Data, "rem_page_") {

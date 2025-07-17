@@ -4,6 +4,7 @@ import (
 	"database/sql"
 )
 
+// Migrate выполняет миграцию схемы БД для напоминаний и пользователей.
 func Migrate(db *sql.DB) error {
 	// Create reminders table
 	_, err := db.Exec(`
@@ -40,5 +41,6 @@ func Migrate(db *sql.DB) error {
 		UNIQUE(id, chat_id)
 	);
 	`)
+
 	return err
 }

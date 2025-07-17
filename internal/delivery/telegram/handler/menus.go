@@ -37,6 +37,7 @@ func init() {
 	)
 }
 
+// WeekdaysMenu возвращает inline-меню для выбора дня недели.
 func WeekdaysMenu() *tele.ReplyMarkup {
 	m := &tele.ReplyMarkup{}
 	btnMonday := m.Data("Пн", "weekday_1")
@@ -49,5 +50,6 @@ func WeekdaysMenu() *tele.ReplyMarkup {
 	m.Inline(
 		m.Row(btnMonday, btnTuesday, btnWednesday, btnThursday, btnFriday, btnSaturday, btnSunday),
 	)
+
 	return m
 }

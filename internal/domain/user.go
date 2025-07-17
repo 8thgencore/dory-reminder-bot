@@ -2,6 +2,7 @@ package domain
 
 import "time"
 
+// User описывает пользователя Telegram-бота.
 type User struct {
 	ID        int64
 	ChatID    int64

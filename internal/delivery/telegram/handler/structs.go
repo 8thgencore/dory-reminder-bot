@@ -4,11 +4,12 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
+	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	tele "gopkg.in/telebot.v4"
 )
 
+// Handler представляет обработчик для работы с напоминаниями через Telegram.
 type Handler struct {
 	Bot         *tele.Bot
 	Usecase     usecase.ReminderUsecase
@@ -16,10 +17,12 @@ type Handler struct {
 	Session     *session.SessionManager
 }
 
+// NewHandler создает новый Handler для работы с напоминаниями.
 func NewHandler(bot *tele.Bot, uc usecase.ReminderUsecase, userUc usecase.UserUsecase) *Handler {
 	return &Handler{Bot: bot, Usecase: uc, UserUsecase: userUc, Session: session.NewSessionManager()}
 }
 
+// Register регистрирует все обработчики команд и событий Telegram.
 func (h *Handler) Register() {
 	h.Bot.Handle("/start", func(c tele.Context) error {
 		return h.HandleStart(c, h.UserUsecase)

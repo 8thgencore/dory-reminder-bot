@@ -5,19 +5,22 @@ import (
 	"sync"
 )
 
+// AddReminderStep описывает шаг мастера добавления напоминания.
 type AddReminderStep int
 
+// Возможные шаги мастера добавления напоминания.
 const (
-	StepNone AddReminderStep = iota
-	StepType
-	StepTime
-	StepText
-	StepInterval
-	StepDate
-	StepConfirm
-	StepTimezone
+	StepNone     AddReminderStep = iota // начальное состояние
+	StepType                            // выбор типа
+	StepTime                            // ввод времени
+	StepText                            // ввод текста
+	StepInterval                        // ввод интервала
+	StepDate                            // ввод даты
+	StepConfirm                         // подтверждение
+	StepTimezone                        // ввод таймзоны
 )
 
+// AddReminderSession хранит состояние сессии добавления напоминания.
 type AddReminderSession struct {
 	UserID   int64
 	ChatID   int64
@@ -29,11 +32,13 @@ type AddReminderSession struct {
 	Text     string // текст напоминания
 }
 
+// SessionManager управляет сессиями добавления напоминаний.
 type SessionManager struct {
 	mu       sync.Mutex
 	sessions map[string]*AddReminderSession // key: chatID:userID
 }
 
+// NewSessionManager создает новый SessionManager.
 func NewSessionManager() *SessionManager {
 	return &SessionManager{sessions: make(map[string]*AddReminderSession)}
 }
@@ -42,18 +47,21 @@ func sessionKey(chatID, userID int64) string {
 	return fmt.Sprintf("%d:%d", chatID, userID)
 }
 
+// Get возвращает сессию по chatID и userID.
 func (sm *SessionManager) Get(chatID, userID int64) *AddReminderSession {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	return sm.sessions[sessionKey(chatID, userID)]
 }
 
+// Set сохраняет сессию.
 func (sm *SessionManager) Set(s *AddReminderSession) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.sessions[sessionKey(s.ChatID, s.UserID)] = s
 }
 
+// Delete удаляет сессию по chatID и userID.
 func (sm *SessionManager) Delete(chatID, userID int64) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
