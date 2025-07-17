@@ -92,7 +92,7 @@ func (h *Handler) onAdd(c tele.Context) error {
 	if c.Message().Payload != "" {
 		return c.Send("Для создания напоминания используйте мастер через /add без параметров.")
 	}
-	return c.Send(texts.AddTypePrompt)
+	return c.Send(texts.HelpAdd, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, addMenu)
 }
 
 // Коллбэки для типов напоминаний
@@ -112,7 +112,7 @@ func (h *Handler) onText(c tele.Context) error {
 	if sess != nil && sess.Step == session.StepTimezone {
 		return h.HandleTimezoneText(c)
 	}
-	if sess != nil && (sess.Step == session.StepTime || sess.Step == session.StepText || sess.Step == session.StepInterval) {
+	if sess != nil && (sess.Step == session.StepTime || sess.Step == session.StepText || sess.Step == session.StepInterval || sess.Step == session.StepDate) {
 		return h.HandleAddWizardText(c)
 	}
 	return nil

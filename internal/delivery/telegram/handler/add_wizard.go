@@ -90,6 +90,11 @@ func (h *Handler) HandleAddTypeCallback(c tele.Context, typ string) error {
 		h.updateSession(sess)
 		return c.Send(texts.ValidateEnterDate)
 	}
+	if typ == ReminderTypeDate {
+		sess.Step = session.StepDate
+		h.updateSession(sess)
+		return c.Send("Пожалуйста, введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ")
+	}
 	sess.Step = session.StepTime
 	h.updateSession(sess)
 	msg := getAddReminderMessage(typ)
@@ -167,7 +172,7 @@ func (h *Handler) handleStepInterval(c tele.Context, sess *session.AddReminderSe
 func (h *Handler) handleStepDate(c tele.Context, sess *session.AddReminderSession) error {
 	val := strings.TrimSpace(c.Text())
 	slog.Info(
-		"[handleStepDate]",
+		"[handleStepDate] called",
 		"step", sess.Step,
 		"type", sess.Type,
 		"val", val,
@@ -177,24 +182,41 @@ func (h *Handler) handleStepDate(c tele.Context, sess *session.AddReminderSessio
 	if sess.Type == ReminderTypeNDays {
 		if sess.Date != "" && sess.Interval == 0 {
 			if !validator.IsInterval(val) {
+				slog.Warn("[handleStepDate] NDays: invalid interval", "val", val)
 				return c.Send(texts.ValidateEnterInterval)
 			}
 			n, _ := strconv.Atoi(val)
 			sess.Interval = n
 			sess.Step = session.StepTime
 			h.updateSession(sess)
-			slog.Info("[handleStepDate]", "set_interval", n, "next_step", "StepTime")
+			slog.Info("[handleStepDate] NDays: set_interval", "interval", n, "next_step", "StepTime")
 			return c.Send(texts.PromptEveryDay)
 		}
 		if !validator.IsDateDDMMYYYY(val) {
+			slog.Warn("[handleStepDate] NDays: invalid date", "val", val)
 			return c.Send(texts.ValidateEnterDate)
 		}
 		sess.Date = val
 		sess.Step = session.StepInterval
 		h.updateSession(sess)
-		slog.Info("[handleStepDate]", "set_date", val, "next_step", "StepInterval")
+		slog.Info("[handleStepDate] NDays: set_date", "date", val, "next_step", "StepInterval")
 		return c.Send(texts.ValidateEnterInterval)
 	}
+	// Новый вариант для ReminderTypeDate: дата и время одним сообщением
+	if sess.Type == ReminderTypeDate {
+		parts := strings.Fields(val)
+		if len(parts) != 2 || !validator.IsDateDDMMYYYY(parts[0]) || !validator.IsTime(parts[1]) {
+			slog.Warn("[handleStepDate] Date: invalid date/time", "val", val)
+			return c.Send("Пожалуйста, введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ")
+		}
+		sess.Date = parts[0]
+		sess.Time = parts[1]
+		sess.Step = session.StepText
+		h.updateSession(sess)
+		slog.Info("[handleStepDate] Date: set_date_time", "date", sess.Date, "time", sess.Time, "next_step", "StepText")
+		return c.Send(texts.ValidateEnterText)
+	}
+	slog.Warn("[handleStepDate] unknown type", "type", sess.Type)
 	return nil
 }
 
@@ -237,10 +259,11 @@ func (h *Handler) HandleAddWizardText(c tele.Context) error {
 	chatID := c.Chat().ID
 	sess := h.getSession(chatID, userID)
 	if sess == nil {
+		slog.Warn("[HandleAddWizardText] session is nil", "chatID", chatID, "userID", userID)
 		return nil
 	}
 	slog.Info(
-		"[HandleAddWizardText]",
+		"[HandleAddWizardText] called",
 		"chatID", chatID,
 		"userID", userID,
 		"step", sess.Step,
@@ -257,6 +280,7 @@ func (h *Handler) HandleAddWizardText(c tele.Context) error {
 	case session.StepDate:
 		return h.handleStepDate(c, sess)
 	}
+	slog.Warn("[HandleAddWizardText] unknown step", "step", sess.Step, "type", sess.Type)
 	return nil
 }
 
@@ -383,7 +407,11 @@ func parseWeekday(s string) (int, bool) {
 func (h *Handler) createReminderFromSession(sess *session.AddReminderSession) error {
 	now := time.Now()
 	var nextTime time.Time
-	t, _ := time.Parse("15:04", sess.Time)
+	slog.Info("[createReminderFromSession] before calculation", "type", sess.Type, "date", sess.Date, "time", sess.Time, "interval", sess.Interval)
+	t, err := time.Parse("15:04", sess.Time)
+	if err != nil {
+		slog.Warn("[createReminderFromSession] failed to parse time", "sess.Time", sess.Time, "err", err)
+	}
 	switch sess.Type {
 	case ReminderTypeToday:
 		nextTime = getNextTimeToday(now, t)
@@ -406,6 +434,8 @@ func (h *Handler) createReminderFromSession(sess *session.AddReminderSession) er
 		nextTime = getNextTimeMultiDay(now, times)
 	}
 
+	slog.Info("[createReminderFromSession] calculated nextTime", "nextTime", nextTime, "sess.Date", sess.Date, "sess.Time", sess.Time)
+
 	rem := convertSessionToReminder(sess, nextTime)
 	// Для week/month/year/date/multiday сохраняем доп. параметры
 	if sess.Type == ReminderTypeWeek {
@@ -425,6 +455,8 @@ func (h *Handler) createReminderFromSession(sess *session.AddReminderSession) er
 		rem.Repeat = domain.RepeatEveryDay
 		// RepeatDays можно использовать для хранения времён, если нужно
 	}
+
+	slog.Info("[createReminderFromSession] final reminder", "reminder", rem)
 
 	return h.Usecase.AddReminder(context.Background(), rem)
 }

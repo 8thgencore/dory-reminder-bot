@@ -11,6 +11,7 @@ import (
 
 	"github.com/8thgencore/dory-reminder-bot/internal/config"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram"
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/commands"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler"
 	"github.com/8thgencore/dory-reminder-bot/internal/repository"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
@@ -48,20 +49,7 @@ func main() {
 	}
 
 	// Устанавливаем команды бота для меню Telegram
-	commands := []tele.Command{
-		{Text: "start", Description: "Запустить бота"},
-		{Text: "help", Description: "Справка"},
-		{Text: "add", Description: "Добавить напоминание"},
-		{Text: "list", Description: "Список напоминаний"},
-		{Text: "edit", Description: "Редактировать напоминание"},
-		{Text: "delete", Description: "Удалить напоминание"},
-		{Text: "pause", Description: "Поставить на паузу"},
-		{Text: "resume", Description: "Возобновить"},
-		{Text: "timezone", Description: "Установить часовой пояс"},
-	}
-	if err := bot.SetCommands(commands); err != nil {
-		log.Error("Failed to set bot commands", "error", err)
-	}
+	commands.SetCommands(bot, log)
 
 	// Init DB
 	db, err := sql.Open("sqlite3", "data/reminders.db")
