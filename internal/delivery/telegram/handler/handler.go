@@ -64,9 +64,6 @@ func (h *Handler) Register() {
 	h.Bot.Handle(ui.BtnTomorrow, func(c tele.Context) error {
 		return h.AddReminderWizard.HandleAddTypeCallback(c, "tomorrow")
 	})
-	h.Bot.Handle(ui.BtnMultiDay, func(c tele.Context) error {
-		return h.AddReminderWizard.HandleAddTypeCallback(c, "multiday")
-	})
 	h.Bot.Handle(ui.BtnEveryDay, func(c tele.Context) error {
 		return h.AddReminderWizard.HandleAddTypeCallback(c, "everyday")
 	})
@@ -112,7 +109,6 @@ func (h *Handler) onText(c tele.Context) error {
 
 // onCallback обрабатывает callback-запросы
 func (h *Handler) onCallback(c tele.Context) error {
-	slog.Info("OnCallback", "data", c.Callback().Data)
 	callbackData := strings.TrimSpace(c.Callback().Data)
 
 	if strings.HasPrefix(callbackData, "rem_page_") {

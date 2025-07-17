@@ -88,21 +88,3 @@ func (tc *TimeCalculator) GetNextTimeNDays(startTime time.Time, t time.Time, int
 	nextTime := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), t.Hour(), t.Minute(), 0, 0, startTime.Location())
 	return nextTime.AddDate(0, 0, interval)
 }
-
-// GetNextTimeMultiDay вычисляет время для напоминания несколько раз в день
-func (tc *TimeCalculator) GetNextTimeMultiDay(now time.Time, times []string) time.Time {
-	var nextTime time.Time
-	for _, ts := range times {
-		t, _ := time.Parse("15:04", strings.TrimSpace(ts))
-		candidate := time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, now.Location())
-		if candidate.After(now) && (nextTime.IsZero() || candidate.Before(nextTime)) {
-			nextTime = candidate
-		}
-	}
-	if nextTime.IsZero() {
-		// все времена на сегодня прошли — берём первое на завтра
-		t, _ := time.Parse("15:04", strings.TrimSpace(times[0]))
-		nextTime = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, now.Location()).Add(24 * time.Hour)
-	}
-	return nextTime
-}

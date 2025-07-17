@@ -1,3 +1,5 @@
+//revive:disable
+
 package ui
 
 import tele "gopkg.in/telebot.v4"
@@ -7,7 +9,6 @@ var (
 	MainMenu    = &tele.ReplyMarkup{}
 	btnToday    = AddMenu.Data("Сегодня", "add_today")
 	btnTomorrow = AddMenu.Data("Завтра", "add_tomorrow")
-	btnMultiDay = AddMenu.Data("Несколько раз в день", "add_multiday")
 	btnEveryDay = AddMenu.Data("Ежедневно", "add_everyday")
 	btnWeek     = AddMenu.Data("Раз в неделю", "add_week")
 	btnNDays    = AddMenu.Data("Раз в несколько дней", "add_ndays")
@@ -24,9 +25,9 @@ var (
 func init() {
 	AddMenu.Inline(
 		AddMenu.Row(btnToday, btnTomorrow),
-		AddMenu.Row(btnMultiDay, btnEveryDay),
-		AddMenu.Row(btnWeek, btnNDays),
+		AddMenu.Row(btnEveryDay, btnWeek),
 		AddMenu.Row(btnMonth, btnYear),
+		AddMenu.Row(btnNDays),
 		AddMenu.Row(btnDate),
 	)
 
@@ -68,7 +69,6 @@ func WeekdaysMenu() *tele.ReplyMarkup {
 var (
 	BtnToday    = &btnToday
 	BtnTomorrow = &btnTomorrow
-	BtnMultiDay = &btnMultiDay
 	BtnEveryDay = &btnEveryDay
 	BtnWeek     = &btnWeek
 	BtnNDays    = &btnNDays

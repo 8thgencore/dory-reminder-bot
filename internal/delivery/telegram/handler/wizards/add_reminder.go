@@ -27,7 +27,6 @@ const (
 	ReminderTypeMonth    = "month"
 	ReminderTypeYear     = "year"
 	ReminderTypeDate     = "date"
-	ReminderTypeMultiDay = "multiday"
 )
 
 // AddReminderWizard обрабатывает мастер добавления напоминаний
@@ -66,8 +65,6 @@ func getAddReminderMessage(typ string) string {
 		return texts.PromptYear
 	case ReminderTypeDate:
 		return texts.PromptDate
-	case ReminderTypeMultiDay:
-		return texts.PromptMultiDay
 	default:
 		return texts.PromptUnknown
 	}
@@ -166,7 +163,7 @@ func (w *AddReminderWizard) HandleAddWizardText(c tele.Context) error {
 
 func (w *AddReminderWizard) handleStepTime(c tele.Context, sess *session.AddReminderSession) error {
 	t := strings.TrimSpace(c.Text())
-	if !validator.IsTime(t) && sess.Type != ReminderTypeMultiDay {
+	if !validator.IsTime(t) {
 		return c.Send(texts.ValidateEnterTime)
 	}
 	sess.Time = t
@@ -354,16 +351,13 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 			slog.Warn("[createReminderFromSession] failed to parse date", "sess.Date", sess.Date, "err", err)
 		}
 		nextTime = w.TimeCalculator.GetNextTimeNDays(startTime, t, sess.Interval)
-	case ReminderTypeMultiDay:
-		times := strings.Split(sess.Time, ",")
-		nextTime = w.TimeCalculator.GetNextTimeMultiDay(now.In(loc), times)
 	}
 
 	slog.Info("[createReminderFromSession] calculated nextTime", "nextTime", nextTime, "sess.Date", sess.Date, "sess.Time", sess.Time)
 
 	rem := convertSessionToReminderWithTZ(sess, nextTime, user.Timezone)
 
-	// Для week/month/year/date/multiday сохраняем доп. параметры
+	// Для week/month/year/date сохраняем доп. параметры
 	switch sess.Type {
 	case ReminderTypeWeek:
 		rem.Repeat = domain.RepeatEveryWeek
@@ -378,29 +372,11 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 	case ReminderTypeNDays:
 		rem.Repeat = domain.RepeatEveryNDays
 		rem.RepeatEvery = sess.Interval
-	case ReminderTypeMultiDay:
-		rem.Repeat = domain.RepeatEveryDay
 	}
 
 	slog.Info("[createReminderFromSession] final reminder", "reminder", rem)
 
 	return w.ReminderUsecase.AddReminder(context.Background(), rem)
-}
-
-// convertSessionToReminder converts an AddReminderSession to a domain Reminder
-func convertSessionToReminder(sess *session.AddReminderSession, nextTime time.Time) *domain.Reminder {
-	return &domain.Reminder{
-		ChatID:      sess.ChatID,
-		UserID:      sess.UserID,
-		Text:        sess.Text,
-		NextTime:    nextTime,
-		Repeat:      typeToRepeat(sess.Type),
-		RepeatEvery: sess.Interval,
-		Paused:      false,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-		Timezone:    "local",
-	}
 }
 
 // typeToRepeat converts a string reminder type to a domain RepeatType
