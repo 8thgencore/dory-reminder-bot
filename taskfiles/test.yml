@@ -1,0 +1,27 @@
+version: '3'
+
+vars:
+  TESTS_ATTEMPTS: 5
+  TESTS_COVERAGE_FILE: coverage.out
+
+tasks:
+  default:
+    desc: Run all tests
+    cmds:
+      - go clean -testcache
+      - go test ./... -tags=unit -v -race -count {{.TESTS_ATTEMPTS}}
+  coverage:
+    desc: Run tests with coverage report
+    cmds:
+      - go clean -testcache
+      - |
+        go test ./... \
+          -tags=unit \
+          -race \
+          -coverprofile={{.TESTS_COVERAGE_FILE}}.tmp \
+          -covermode=count \
+          -count={{.TESTS_ATTEMPTS}}
+      - grep -v "mocks/" {{.TESTS_COVERAGE_FILE}}.tmp > {{.TESTS_COVERAGE_FILE}}
+      - rm {{.TESTS_COVERAGE_FILE}}.tmp
+      - go tool cover -html={{.TESTS_COVERAGE_FILE}} -o coverage.html
+      - go tool cover -func={{.TESTS_COVERAGE_FILE}} | grep "total"

@@ -1,0 +1,22 @@
+version: '3'
+
+tasks:
+  dev:
+    desc: Run application in development mode with hot reload
+    cmds:
+      - air 
+
+  lint:
+    desc: Run linter on the codebase
+    cmds:
+      - golangci-lint run ./internal/... ./cmd/... ./pkg/... -c .golangci.yaml --fix
+
+  format:
+    desc: Format Go code using gofumpt
+    cmds:
+      - gofumpt -l -w .
+
+  gosec:
+    desc: Run gosec on the codebase
+    cmds:
+      - gosec -exclude-dir=./pkg/pb ./...

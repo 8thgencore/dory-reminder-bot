@@ -1,0 +1,7 @@
+version: '3'
+
+tasks:
+  bot:
+    desc: Build the bot application
+    cmds:
+      - go build -o ./bin/bot cmd/bot/main.go

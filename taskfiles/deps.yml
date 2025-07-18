@@ -1,0 +1,9 @@
+version: '3'
+
+tasks:
+  install:global:
+    desc: Install global development dependencies
+    cmds:
+      - go install github.com/air-verse/air@latest
+      - go install mvdan.cc/gofumpt@latest
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.2.1
