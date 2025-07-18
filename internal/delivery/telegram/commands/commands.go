@@ -6,6 +6,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
+// SetCommands устанавливает команды бота в Telegram
 func SetCommands(bot *tele.Bot, log *slog.Logger) {
 	commands := []tele.Command{
 		{Text: "start", Description: "Запустить бота"},

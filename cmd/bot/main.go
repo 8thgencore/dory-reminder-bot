@@ -57,7 +57,11 @@ func main() {
 		log.Error("Failed to open database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Error("Failed to close database", "error", err)
+		}
+	}()
 
 	// Migrate schema
 	if err := repository.Migrate(db); err != nil {

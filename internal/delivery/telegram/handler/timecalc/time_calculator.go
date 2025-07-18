@@ -1,4 +1,4 @@
-package utils
+package timecalc
 
 import (
 	"strconv"
@@ -50,13 +50,15 @@ func (tc *TimeCalculator) GetNextTimeWeek(now time.Time, t time.Time, interval i
 func (tc *TimeCalculator) GetNextTimeMonth(now time.Time, t time.Time, interval int) time.Time {
 	month := now.Month()
 	year := now.Year()
-	if now.Day() > interval || (now.Day() == interval && (now.Hour() > t.Hour() || (now.Hour() == t.Hour() && now.Minute() >= t.Minute()))) {
+	if now.Day() > interval || (now.Day() == interval &&
+		(now.Hour() > t.Hour() || (now.Hour() == t.Hour() && now.Minute() >= t.Minute()))) {
 		month++
 		if month > 12 {
 			month = 1
 			year++
 		}
 	}
+
 	return time.Date(year, month, interval, t.Hour(), t.Minute(), 0, 0, now.Location())
 }
 
@@ -65,9 +67,12 @@ func (tc *TimeCalculator) GetNextTimeYear(now time.Time, t time.Time, date strin
 	day, _ := strconv.Atoi(strings.Split(date, ".")[0])
 	mon, _ := strconv.Atoi(strings.Split(date, ".")[1])
 	year := now.Year()
-	if now.Month() > time.Month(mon) || (now.Month() == time.Month(mon) && (now.Day() > day || (now.Day() == day && (now.Hour() > t.Hour() || (now.Hour() == t.Hour() && now.Minute() >= t.Minute()))))) {
+	if now.Month() > time.Month(mon) || (now.Month() == time.Month(mon) &&
+		(now.Day() > day || (now.Day() == day &&
+			(now.Hour() > t.Hour() || (now.Hour() == t.Hour() && now.Minute() >= t.Minute()))))) {
 		year++
 	}
+
 	return time.Date(year, time.Month(mon), day, t.Hour(), t.Minute(), 0, 0, now.Location())
 }
 
@@ -80,11 +85,13 @@ func (tc *TimeCalculator) GetNextTimeDate(t time.Time, date string) time.Time {
 		year, _ := strconv.Atoi(parts[2])
 		return time.Date(year, time.Month(mon), day, t.Hour(), t.Minute(), 0, 0, time.Now().Location())
 	}
+
 	return time.Time{}
 }
 
 // GetNextTimeNDays вычисляет время для напоминания каждые N дней
 func (tc *TimeCalculator) GetNextTimeNDays(startTime time.Time, t time.Time, interval int) time.Time {
-	nextTime := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), t.Hour(), t.Minute(), 0, 0, startTime.Location())
+	nextTime := time.Date(startTime.Year(), startTime.Month(), startTime.Day(),
+		t.Hour(), t.Minute(), 0, 0, startTime.Location())
 	return nextTime.AddDate(0, 0, interval)
 }

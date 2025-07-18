@@ -1,0 +1,15 @@
+version: '3'
+
+includes:
+  build: ./taskfiles/build.yml
+  deps: ./taskfiles/deps.yml
+  dev: 
+    taskfile: ./taskfiles/dev.yml
+    flatten: true
+  test: ./taskfiles/test.yml
+
+tasks:
+  default:
+    desc: Show task list
+    cmds:
+      - task --list

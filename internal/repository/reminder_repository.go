@@ -31,8 +31,9 @@ func NewReminderRepository(db *sql.DB) ReminderRepository {
 // TODO: Реализация методов интерфейса
 
 func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) error {
-	q := `INSERT INTO reminders (chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, created_at, updated_at, timezone)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	q := `INSERT INTO reminders (chat_id, user_id, text, next_time, repeat, repeat_days, 
+		repeat_every, paused, created_at, updated_at, timezone)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	days := ""
 	if len(rem.RepeatDays) > 0 {
 		for i, d := range rem.RepeatDays {
@@ -55,11 +56,13 @@ func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) e
 		rem.UpdatedAt,
 		rem.Timezone,
 	)
+
 	return err
 }
 
 func (r *reminderRepository) Update(ctx context.Context, rem *domain.Reminder) error {
-	q := `UPDATE reminders SET chat_id=?, user_id=?, text=?, next_time=?, repeat=?, repeat_days=?, repeat_every=?, paused=?, created_at=?, updated_at=?, timezone=? WHERE id=?`
+	q := `UPDATE reminders SET chat_id=?, user_id=?, text=?, next_time=?, repeat=?, repeat_days=?, 
+		repeat_every=?, paused=?, created_at=?, updated_at=?, timezone=? WHERE id=?`
 	days := ""
 	if len(rem.RepeatDays) > 0 {
 		for i, d := range rem.RepeatDays {
@@ -83,6 +86,7 @@ func (r *reminderRepository) Update(ctx context.Context, rem *domain.Reminder) e
 		rem.Timezone,
 		rem.ID,
 	)
+
 	return err
 }
 
@@ -92,13 +96,15 @@ func (r *reminderRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *reminderRepository) GetByID(ctx context.Context, id int64) (*domain.Reminder, error) {
-	q := `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, created_at, updated_at, timezone
+	q := `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+		created_at, updated_at, timezone
 		FROM reminders WHERE id = ?`
 	row := r.db.QueryRowContext(ctx, q, id)
 	var rem domain.Reminder
 	var days string
 	if err := row.Scan(
-		&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days, &rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
+		&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days, &rem.RepeatEvery,
+		&rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
 	); err != nil {
 		return nil, err
 	}
@@ -110,7 +116,8 @@ func (r *reminderRepository) GetByID(ctx context.Context, id int64) (*domain.Rem
 }
 
 func (r *reminderRepository) ListByChat(ctx context.Context, chatID int64) ([]*domain.Reminder, error) {
-	q := `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, created_at, updated_at, timezone
+	q := `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+		created_at, updated_at, timezone
 		FROM reminders WHERE chat_id = ?`
 	rows, err := r.db.QueryContext(ctx, q, chatID)
 	if err != nil {
@@ -126,7 +133,8 @@ func (r *reminderRepository) ListByChat(ctx context.Context, chatID int64) ([]*d
 		var rem domain.Reminder
 		var days string
 		if err := rows.Scan(
-			&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days, &rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
+			&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
+			&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -140,7 +148,8 @@ func (r *reminderRepository) ListByChat(ctx context.Context, chatID int64) ([]*d
 }
 
 func (r *reminderRepository) ListDue(ctx context.Context, now time.Time) ([]*domain.Reminder, error) {
-	q := `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, created_at, updated_at, timezone
+	q := `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+		created_at, updated_at, timezone
 		FROM reminders WHERE next_time <= ? AND paused = 0`
 	rows, err := r.db.QueryContext(ctx, q, now)
 	if err != nil {
@@ -156,7 +165,8 @@ func (r *reminderRepository) ListDue(ctx context.Context, now time.Time) ([]*dom
 		var rem domain.Reminder
 		var days string
 		if err := rows.Scan(
-			&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days, &rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
+			&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
+			&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -176,6 +186,7 @@ func splitCommaInts(s string) []int {
 			res = append(res, n)
 		}
 	}
+
 	return res
 }
 
@@ -204,5 +215,6 @@ func splitRaw(s, sep string) []string {
 		}
 	}
 	res = append(res, s[start:])
+
 	return res
 }

@@ -15,7 +15,7 @@ import (
 // Handler представляет главный координатор для работы с напоминаниями через Telegram
 type Handler struct {
 	Bot        *tele.Bot
-	SessionMgr *session.SessionManager
+	SessionMgr *session.Manager
 	BotName    string
 
 	// Компоненты
@@ -26,7 +26,9 @@ type Handler struct {
 }
 
 // NewHandler создает новый Handler для работы с напоминаниями
-func NewHandler(bot *tele.Bot, reminderUc usecase.ReminderUsecase, userUc usecase.UserUsecase, botName string) *Handler {
+func NewHandler(bot *tele.Bot, reminderUc usecase.ReminderUsecase, userUc usecase.UserUsecase,
+	botName string,
+) *Handler {
 	sessionMgr := session.NewSessionManager()
 
 	h := &Handler{
@@ -112,9 +114,11 @@ func (h *Handler) onText(c tele.Context) error {
 	if sess != nil && sess.Step == session.StepTimezone {
 		return h.TimezoneWizard.HandleTimezoneText(c, h.BotName)
 	}
-	if sess != nil && (sess.Step == session.StepTime || sess.Step == session.StepText || sess.Step == session.StepInterval || sess.Step == session.StepDate) {
+	if sess != nil && (sess.Step == session.StepTime || sess.Step == session.StepText ||
+		sess.Step == session.StepInterval || sess.Step == session.StepDate) {
 		return h.AddReminderWizard.HandleAddWizardText(c, h.BotName)
 	}
+
 	return nil
 }
 

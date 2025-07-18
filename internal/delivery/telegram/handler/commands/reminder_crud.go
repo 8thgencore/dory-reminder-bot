@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -45,7 +46,7 @@ func (rc *ReminderCRUD) getReminders(chatID int64) ([]*usecase_domain.Reminder, 
 func getReminderNumber(arg string) (int, error) {
 	num, err := strconv.Atoi(strings.TrimSpace(arg))
 	if err != nil || num <= 0 {
-		return 0, fmt.Errorf("Некорректный номер")
+		return 0, errors.New("некорректный номер")
 	}
 	return num, nil
 }
@@ -62,6 +63,7 @@ func (rc *ReminderCRUD) OnAdd(c tele.Context) error {
 	if c.Message().Payload != "" {
 		return c.Send("Для создания напоминания используйте мастер через /add без параметров.")
 	}
+
 	return c.Send(texts.HelpAdd, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, ui.GetAddMenu())
 }
 
@@ -86,11 +88,11 @@ func escapeMarkdown(s string) string {
 		".", "\\.",
 		"!", "\\!",
 	)
+
 	return replacer.Replace(s)
 }
 
-
-
+// OnList обрабатывает команду /list
 func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	reminders, err := rc.getReminders(c.Chat().ID)
 	if err != nil {
@@ -117,7 +119,8 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 
 	var builder strings.Builder
 	builder.WriteString("*📋 Ваши напоминания*\n")
-	builder.WriteString(fmt.Sprintf("_📄 Страница %d из %d_\n", page+1, (len(reminders)+remindersPerPage-1)/remindersPerPage))
+	totalPages := (len(reminders) + remindersPerPage - 1) / remindersPerPage
+	builder.WriteString(fmt.Sprintf("_📄 Страница %d из %d_\n", page+1, totalPages))
 	builder.WriteString("━━━━━━━━━━━━━━━\n")
 
 	for i := start; i < end; i++ {
@@ -157,9 +160,9 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	if c.Callback() != nil {
 		return c.Edit(msg, options)
 	}
+
 	return c.Send(msg, options)
 }
-
 
 // OnEdit обрабатывает команду /edit
 func (rc *ReminderCRUD) OnEdit(c tele.Context) error {
@@ -207,6 +210,7 @@ func (rc *ReminderCRUD) OnEdit(c tele.Context) error {
 	if err != nil {
 		return c.Send("Ошибка при обновлении напоминания")
 	}
+
 	return c.Send("Напоминание обновлено!")
 }
 

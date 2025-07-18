@@ -45,6 +45,7 @@ func (u *userUsecase) GetOrCreateUser(
 		if err != nil {
 			return nil, err
 		}
+
 		return user, nil
 	}
 

@@ -1,0 +1,12 @@
+version: '3'
+
+tasks:
+  server:
+    desc: Build the server application
+    cmds:
+      - go build -o ./bin/valchemy-server cmd/server/main.go
+
+  cli:
+    desc: Build the cli application
+    cmds:
+      - go build -o ./bin/valchemy cmd/cli/main.go

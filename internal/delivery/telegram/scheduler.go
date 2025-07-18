@@ -10,6 +10,7 @@ import (
 	tele "gopkg.in/telebot.v4"
 )
 
+// StartScheduler запускает планировщик напоминаний
 func StartScheduler(bot *tele.Bot, uc usecase.ReminderUsecase) {
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
@@ -43,14 +44,20 @@ func deliverDueReminders(bot *tele.Bot, uc usecase.ReminderUsecase) {
 		slog.Info("Reminder sent", "chat_id", r.ChatID, "reminder_id", r.ID, "text", r.Text)
 		// Обработка повторов и обновление next_time
 		if r.Repeat == domain.RepeatNone {
-			uc.DeleteReminder(context.Background(), r.ID)
-			slog.Info("One-time reminder deleted", "reminder_id", r.ID)
+			if err := uc.DeleteReminder(context.Background(), r.ID); err != nil {
+				slog.Error("Failed to delete reminder", "reminder_id", r.ID, "error", err)
+			} else {
+				slog.Info("One-time reminder deleted", "reminder_id", r.ID)
+			}
 		} else {
 			next := calcNextTimeForward(r, now)
 			r.NextTime = next
 			r.UpdatedAt = now
-			uc.EditReminder(context.Background(), r)
-			slog.Info("Repeating reminder updated", "reminder_id", r.ID, "next_time", next)
+			if err := uc.EditReminder(context.Background(), r); err != nil {
+				slog.Error("Failed to edit reminder", "reminder_id", r.ID, "error", err)
+			} else {
+				slog.Info("Repeating reminder updated", "reminder_id", r.ID, "next_time", next)
+			}
 		}
 	}
 }
@@ -75,5 +82,6 @@ func calcNextTimeForward(r *domain.Reminder, now time.Time) time.Time {
 			return now
 		}
 	}
+
 	return next
 }

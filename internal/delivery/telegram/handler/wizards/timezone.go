@@ -15,12 +15,15 @@ import (
 // TimezoneWizard обрабатывает мастер настройки часового пояса
 type TimezoneWizard struct {
 	UserUsecase    usecase.UserUsecase
-	SessionManager *session.SessionManager
+	SessionManager *session.Manager
 	GetMainMenu    func() *tele.ReplyMarkup
 }
 
 // NewTimezoneWizard создает новый экземпляр мастера настройки часового пояса
-func NewTimezoneWizard(userUc usecase.UserUsecase, sessionMgr *session.SessionManager, getMainMenu func() *tele.ReplyMarkup) *TimezoneWizard {
+// NewTimezoneWizard создает новый экземпляр мастера настройки часового пояса
+func NewTimezoneWizard(userUc usecase.UserUsecase, sessionMgr *session.Manager,
+	getMainMenu func() *tele.ReplyMarkup,
+) *TimezoneWizard {
 	return &TimezoneWizard{
 		UserUsecase:    userUc,
 		SessionManager: sessionMgr,
@@ -35,6 +38,7 @@ func (tw *TimezoneWizard) OnTimezone(c tele.Context) error {
 		ChatID: c.Chat().ID,
 		Step:   session.StepTimezone,
 	})
+
 	return c.Send("🌍 Введите ваш часовой пояс в формате IANA (например, Europe/Moscow, America/New_York, Asia/Tokyo):")
 }
 

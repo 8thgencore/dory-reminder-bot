@@ -31,7 +31,8 @@ func (r *userRepository) GetByChatAndUser(ctx context.Context, chatID, userID in
 	row := r.db.QueryRowContext(ctx, q, chatID, userID)
 	var user domain.User
 	if err := row.Scan(
-		&user.ChatID, &user.ID, &user.Username, &user.FirstName, &user.LastName, &user.Timezone, &user.CreatedAt, &user.UpdatedAt,
+		&user.ChatID, &user.ID, &user.Username, &user.FirstName, &user.LastName, &user.Timezone,
+		&user.CreatedAt, &user.UpdatedAt,
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -48,6 +49,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	_, err := r.db.ExecContext(ctx, q,
 		user.ChatID, user.ID, user.Username, user.FirstName, user.LastName, user.Timezone, user.CreatedAt, user.UpdatedAt,
 	)
+
 	return err
 }
 

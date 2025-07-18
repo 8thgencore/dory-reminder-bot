@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/timecalc"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/ui"
-	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/utils"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
@@ -32,17 +32,20 @@ const (
 // AddReminderWizard обрабатывает мастер добавления напоминаний
 type AddReminderWizard struct {
 	ReminderUsecase usecase.ReminderUsecase
-	SessionManager  *session.SessionManager
-	TimeCalculator  *utils.TimeCalculator
+	SessionManager  *session.Manager
+	TimeCalculator  *timecalc.TimeCalculator
 	UserUsecase     usecase.UserUsecase // добавлено
 }
 
 // NewAddReminderWizard создает новый экземпляр мастера
-func NewAddReminderWizard(reminderUc usecase.ReminderUsecase, sessionMgr *session.SessionManager, userUc usecase.UserUsecase) *AddReminderWizard {
+// NewAddReminderWizard создает новый экземпляр мастера
+func NewAddReminderWizard(reminderUc usecase.ReminderUsecase, sessionMgr *session.Manager,
+	userUc usecase.UserUsecase,
+) *AddReminderWizard {
 	return &AddReminderWizard{
 		ReminderUsecase: reminderUc,
 		SessionManager:  sessionMgr,
-		TimeCalculator:  utils.NewTimeCalculator(),
+		TimeCalculator:  timecalc.NewTimeCalculator(),
 		UserUsecase:     userUc, // добавлено
 	}
 }
@@ -124,6 +127,7 @@ func (w *AddReminderWizard) HandleAddTypeCallback(c tele.Context, typ string) er
 	w.updateSession(sess)
 	_ = c.Delete()
 	msg := getAddReminderMessage(typ)
+
 	return c.Send(msg)
 }
 
@@ -163,21 +167,27 @@ func (w *AddReminderWizard) HandleAddWizardText(c tele.Context, botName string) 
 	}
 
 	slog.Warn("[HandleAddWizardText] unknown step", "step", sess.Step, "type", sess.Type)
+
 	return nil
 }
 
 // Добавляем вспомогательные методы для обработки текста без упоминания бота
-func (w *AddReminderWizard) handleStepTimeWithText(c tele.Context, sess *session.AddReminderSession, text string) error {
+func (w *AddReminderWizard) handleStepTimeWithText(c tele.Context, sess *session.AddReminderSession,
+	text string,
+) error {
 	if !validator.IsTime(text) {
 		return c.Send(texts.ValidateEnterTime)
 	}
 	sess.Time = text
 	sess.Step = session.StepText
 	w.updateSession(sess)
+
 	return c.Send(texts.ValidateEnterText)
 }
 
-func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *session.AddReminderSession, text string) error {
+func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *session.AddReminderSession,
+	text string,
+) error {
 	slog.Info(
 		"[handleStepInterval]",
 		"step", sess.Step,
@@ -200,6 +210,7 @@ func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *ses
 		if err := c.Respond(); err != nil {
 			slog.Error("c.Respond error", "err", err)
 		}
+
 		return c.Send(texts.PromptEveryDay)
 	case ReminderTypeMonth:
 		if !validator.IsInterval(text) {
@@ -213,6 +224,7 @@ func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *ses
 		if err := c.Respond(); err != nil {
 			slog.Error("c.Respond error", "err", err)
 		}
+
 		return c.Send(texts.PromptEveryDay)
 	case ReminderTypeYear:
 		if !validator.IsDateDDMM(text) {
@@ -225,6 +237,7 @@ func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *ses
 		if err := c.Respond(); err != nil {
 			slog.Error("c.Respond error", "err", err)
 		}
+
 		return c.Send(texts.PromptEveryDay)
 	case ReminderTypeNDays:
 		if !validator.IsInterval(text) {
@@ -235,22 +248,29 @@ func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *ses
 		sess.Step = session.StepTime
 		w.updateSession(sess)
 		slog.Info("[handleStepInterval]", "set_ndays_interval", n, "next_step", "StepTime")
+
 		return c.Send(texts.PromptEveryDay)
 	}
+
 	return nil
 }
 
-func (w *AddReminderWizard) handleStepTextWithText(c tele.Context, sess *session.AddReminderSession, text string) error {
+func (w *AddReminderWizard) handleStepTextWithText(c tele.Context, sess *session.AddReminderSession,
+	text string,
+) error {
 	if !validator.IsNotEmpty(text) {
 		return c.Send(texts.ValidateEnterText)
 	}
 	sess.Text = text
 	sess.Step = session.StepConfirm
 	w.updateSession(sess)
+
 	return w.handleStepConfirm(c, sess)
 }
 
-func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session.AddReminderSession, text string) error {
+func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session.AddReminderSession,
+	text string,
+) error {
 	slog.Info(
 		"[handleStepDate] called",
 		"step", sess.Step,
@@ -271,6 +291,7 @@ func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session
 			sess.Step = session.StepTime
 			w.updateSession(sess)
 			slog.Info("[handleStepDate] NDays: set_interval", "interval", n, "next_step", "StepTime")
+
 			return c.Send(texts.PromptEveryDay)
 		}
 		if !validator.IsDateDDMMYYYY(text) {
@@ -281,6 +302,7 @@ func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
 		slog.Info("[handleStepDate] NDays: set_date", "date", text, "next_step", "StepInterval")
+
 		return c.Send(texts.ValidateEnterInterval)
 	}
 
@@ -296,22 +318,13 @@ func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session
 		sess.Step = session.StepText
 		w.updateSession(sess)
 		slog.Info("[handleStepDate] Date: set_date_time", "date", sess.Date, "time", sess.Time, "next_step", "StepText")
+
 		return c.Send(texts.ValidateEnterText)
 	}
 
 	slog.Warn("[handleStepDate] unknown type", "type", sess.Type)
-	return nil
-}
 
-func (w *AddReminderWizard) handleStepText(c tele.Context, sess *session.AddReminderSession) error {
-	txt := strings.TrimSpace(c.Text())
-	if !validator.IsNotEmpty(txt) {
-		return c.Send(texts.ValidateEnterText)
-	}
-	sess.Text = txt
-	sess.Step = session.StepConfirm
-	w.updateSession(sess)
-	return w.handleStepConfirm(c, sess)
+	return nil
 }
 
 func (w *AddReminderWizard) handleStepConfirm(c tele.Context, sess *session.AddReminderSession) error {
@@ -320,6 +333,7 @@ func (w *AddReminderWizard) handleStepConfirm(c tele.Context, sess *session.AddR
 	if err != nil {
 		return c.Send(texts.ErrCreateReminder)
 	}
+
 	return c.Send("Напоминание создано!")
 }
 
@@ -327,7 +341,8 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 	now := time.Now()
 	var nextTime time.Time
 
-	slog.Info("[createReminderFromSession] before calculation", "type", sess.Type, "date", sess.Date, "time", sess.Time, "interval", sess.Interval)
+	slog.Info("[createReminderFromSession] before calculation", "type", sess.Type, "date", sess.Date,
+		"time", sess.Time, "interval", sess.Interval)
 
 	// Получаем пользователя и его таймзону
 	user, err := w.UserUsecase.GetOrCreateUser(context.Background(), sess.ChatID, sess.UserID, "", "", "")
@@ -366,7 +381,8 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 		nextTime = w.TimeCalculator.GetNextTimeNDays(startTime, t, sess.Interval)
 	}
 
-	slog.Info("[createReminderFromSession] calculated nextTime", "nextTime", nextTime, "sess.Date", sess.Date, "sess.Time", sess.Time)
+	slog.Info("[createReminderFromSession] calculated nextTime", "nextTime", nextTime, "sess.Date", sess.Date,
+		"sess.Time", sess.Time)
 
 	rem := convertSessionToReminderWithTZ(sess, nextTime, user.Timezone)
 
@@ -409,6 +425,7 @@ func parseWeekday(s string) (int, bool) {
 	}
 	s = strings.ToLower(strings.TrimSpace(s))
 	idx, ok := weekdays[s]
+
 	return idx, ok
 }
 
@@ -446,6 +463,7 @@ func (w *AddReminderWizard) HandleWeekdayCallback(c tele.Context) error {
 	sess.Interval = weekday
 	sess.Step = session.StepTime
 	w.updateSession(sess)
+
 	return c.Send(texts.PromptEveryDay)
 }
 
@@ -479,6 +497,7 @@ func (w *AddReminderWizard) HandleMonthCallback(c tele.Context) error {
 	sess.Interval = month
 	sess.Step = session.StepText
 	w.updateSession(sess)
+
 	return c.Send(texts.ValidateEnterText)
 }
 

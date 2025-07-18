@@ -32,15 +32,15 @@ type AddReminderSession struct {
 	Text     string // текст напоминания
 }
 
-// SessionManager управляет сессиями добавления напоминаний.
-type SessionManager struct {
+// Manager управляет сессиями добавления напоминаний.
+type Manager struct {
 	mu       sync.Mutex
 	sessions map[string]*AddReminderSession // key: chatID:userID
 }
 
-// NewSessionManager создает новый SessionManager.
-func NewSessionManager() *SessionManager {
-	return &SessionManager{sessions: make(map[string]*AddReminderSession)}
+// NewSessionManager создает новый Manager.
+func NewSessionManager() *Manager {
+	return &Manager{sessions: make(map[string]*AddReminderSession)}
 }
 
 func sessionKey(chatID, userID int64) string {
@@ -48,21 +48,21 @@ func sessionKey(chatID, userID int64) string {
 }
 
 // Get возвращает сессию по chatID и userID.
-func (sm *SessionManager) Get(chatID, userID int64) *AddReminderSession {
+func (sm *Manager) Get(chatID, userID int64) *AddReminderSession {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	return sm.sessions[sessionKey(chatID, userID)]
 }
 
 // Set сохраняет сессию.
-func (sm *SessionManager) Set(s *AddReminderSession) {
+func (sm *Manager) Set(s *AddReminderSession) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.sessions[sessionKey(s.ChatID, s.UserID)] = s
 }
 
 // Delete удаляет сессию по chatID и userID.
-func (sm *SessionManager) Delete(chatID, userID int64) {
+func (sm *Manager) Delete(chatID, userID int64) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	delete(sm.sessions, sessionKey(chatID, userID))

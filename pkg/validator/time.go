@@ -12,6 +12,7 @@ func IsTime(s string) bool {
 		return false
 	}
 	_, err := time.Parse("15:04", s)
+
 	return err == nil
 }
 
@@ -25,5 +26,6 @@ func NextTimeFromString(s string, base time.Time) time.Time {
 	if candidate.Before(base) {
 		candidate = candidate.Add(24 * time.Hour)
 	}
+
 	return candidate
 }
