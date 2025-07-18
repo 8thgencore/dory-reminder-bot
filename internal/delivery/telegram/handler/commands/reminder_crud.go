@@ -118,10 +118,7 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	}
 
 	var builder strings.Builder
-	builder.WriteString("*📋 Ваши напоминания*\n")
-	totalPages := (len(reminders) + remindersPerPage - 1) / remindersPerPage
-	builder.WriteString(fmt.Sprintf("_📄 Страница %d из %d_\n", page+1, totalPages))
-	builder.WriteString("━━━━━━━━━━━━━━━\n")
+	builder.WriteString("*📋 Ваши напоминания*\n\n")
 
 	for i := start; i < end; i++ {
 		r := reminders[i]

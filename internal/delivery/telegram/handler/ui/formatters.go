@@ -17,6 +17,8 @@ func FormatRepeat(r *usecase_domain.Reminder) string {
 		return "еженедельно"
 	case usecase_domain.RepeatEveryMonth:
 		return "ежемесячно"
+	case usecase_domain.RepeatEveryYear:
+		return "ежегодно"
 	case usecase_domain.RepeatEveryNDays:
 		return fmt.Sprintf("каждые %d дней", r.RepeatEvery)
 	default:

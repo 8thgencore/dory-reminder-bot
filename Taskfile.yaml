@@ -7,6 +7,7 @@ includes:
     taskfile: ./taskfiles/dev.yml
     flatten: true
   test: ./taskfiles/test.yml
+  docker: ./taskfiles/docker.yml
 
 tasks:
   default:
