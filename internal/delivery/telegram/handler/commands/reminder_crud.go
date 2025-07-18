@@ -65,7 +65,32 @@ func (rc *ReminderCRUD) OnAdd(c tele.Context) error {
 	return c.Send(texts.HelpAdd, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, ui.GetAddMenu())
 }
 
-// OnList обрабатывает команду /list - список напоминаний с пагинацией
+func escapeMarkdown(s string) string {
+	replacer := strings.NewReplacer(
+		"_", "\\_",
+		"*", "\\*",
+		"[", "\\[",
+		"]", "\\]",
+		"(", "\\(",
+		")", "\\)",
+		"~", "\\~",
+		"`", "\\`",
+		">", "\\>",
+		"#", "\\#",
+		"+", "\\+",
+		"-", "\\-",
+		"=", "\\=",
+		"|", "\\|",
+		"{", "\\{",
+		"}", "\\}",
+		".", "\\.",
+		"!", "\\!",
+	)
+	return replacer.Replace(s)
+}
+
+
+
 func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	reminders, err := rc.getReminders(c.Chat().ID)
 	if err != nil {
@@ -90,16 +115,25 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 		end = len(reminders)
 	}
 
-	msg := "📋 Ваши напоминания:\n\n"
+	var builder strings.Builder
+	builder.WriteString("*📋 Ваши напоминания*\n")
+	builder.WriteString(fmt.Sprintf("_📄 Страница %d из %d_\n", page+1, (len(reminders)+remindersPerPage-1)/remindersPerPage))
+	builder.WriteString("━━━━━━━━━━━━━━━\n")
+
 	for i := start; i < end; i++ {
 		r := reminders[i]
-		status := "✅"
+		status := "✅ Активно"
 		if r.Paused {
-			status = "⏸️"
+			status = "⏸ Приостановлено"
 		}
-		msg += fmt.Sprintf("%s %d. %s\n   📅 %s\n   🔁 %s\n\n",
-			status, i+1, r.Text, r.NextTime.Format("02.01.2006 15:04"), ui.FormatRepeat(r))
+
+		builder.WriteString(fmt.Sprintf("*%d.* %s\n", i+1, escapeMarkdown(r.Text)))
+		builder.WriteString(fmt.Sprintf("   %s | 📅 _%s_\n", status, r.NextTime.Format("02.01.2006 15:04")))
+		builder.WriteString(fmt.Sprintf("   🔁 Повтор: %s\n", escapeMarkdown(ui.FormatRepeat(r))))
+		builder.WriteString("━━━━━━━━━━━━━━━\n")
 	}
+
+	msg := builder.String()
 
 	var nav tele.ReplyMarkup
 	rows := []tele.Row{}
@@ -110,19 +144,22 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 		rows = append(rows, nav.Row(nav.Data("Далее ➡", "rem_page_"+strconv.Itoa(page+1))))
 	}
 
+	options := &tele.SendOptions{ParseMode: tele.ModeMarkdown}
+
 	if len(rows) > 0 {
 		nav.Inline(rows...)
 		if c.Callback() != nil {
-			return c.Edit(msg, &nav)
+			return c.Edit(msg, options, &nav)
 		}
-		return c.Send(msg, &nav)
+		return c.Send(msg, options, &nav)
 	}
 
 	if c.Callback() != nil {
-		return c.Edit(msg)
+		return c.Edit(msg, options)
 	}
-	return c.Send(msg)
+	return c.Send(msg, options)
 }
+
 
 // OnEdit обрабатывает команду /edit
 func (rc *ReminderCRUD) OnEdit(c tele.Context) error {

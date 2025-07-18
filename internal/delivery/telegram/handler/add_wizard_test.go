@@ -45,7 +45,7 @@ func TestAddWizard_NDaysFlow(t *testing.T) {
 
 	// Вводим дату старта
 	c := &mockContext{text: "13.06.2024"}
-	err := wizard.HandleAddWizardText(c)
+	err := wizard.HandleAddWizardText(c, "reminder_bot")
 	assert.NoError(t, err)
 	sess = sessionMgr.Get(1, 1)
 	assert.Equal(t, "13.06.2024", sess.Date)
@@ -55,7 +55,7 @@ func TestAddWizard_NDaysFlow(t *testing.T) {
 
 	// Вводим интервал
 	c2 := &mockContext{text: "10"}
-	err = wizard.HandleAddWizardText(c2)
+	err = wizard.HandleAddWizardText(c2, "reminder_bot")
 	assert.NoError(t, err)
 	sess = sessionMgr.Get(1, 1)
 	assert.Equal(t, 10, sess.Interval)

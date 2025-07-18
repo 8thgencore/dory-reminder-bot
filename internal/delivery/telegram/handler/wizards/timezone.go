@@ -39,10 +39,14 @@ func (tw *TimezoneWizard) OnTimezone(c tele.Context) error {
 }
 
 // HandleTimezoneText обрабатывает ввод пользователем часового пояса
-func (tw *TimezoneWizard) HandleTimezoneText(c tele.Context) error {
+func (tw *TimezoneWizard) HandleTimezoneText(c tele.Context, botName string) error {
 	userID := c.Sender().ID
 	chatID := c.Chat().ID
+
+	// Убираем упоминание бота из текста, если оно есть
 	tz := strings.TrimSpace(c.Text())
+	tz = strings.ReplaceAll(tz, "@"+botName, "")
+	tz = strings.TrimSpace(tz)
 
 	if !timezone.IsValidTimezone(tz) {
 		return c.Send(texts.UnknownTimezone)

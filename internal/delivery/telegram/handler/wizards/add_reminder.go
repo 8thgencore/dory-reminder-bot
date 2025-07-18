@@ -128,7 +128,7 @@ func (w *AddReminderWizard) HandleAddTypeCallback(c tele.Context, typ string) er
 }
 
 // HandleAddWizardText обрабатывает текстовые шаги мастера добавления напоминания
-func (w *AddReminderWizard) HandleAddWizardText(c tele.Context) error {
+func (w *AddReminderWizard) HandleAddWizardText(c tele.Context, botName string) error {
 	userID := c.Sender().ID
 	chatID := c.Chat().ID
 	sess := w.getSession(chatID, userID)
@@ -137,55 +137,59 @@ func (w *AddReminderWizard) HandleAddWizardText(c tele.Context) error {
 		return nil
 	}
 
+	// Убираем упоминание бота из текста, если оно есть
+	text := c.Text()
+	text = strings.ReplaceAll(text, "@"+botName, "")
+	text = strings.TrimSpace(text)
+
 	slog.Info(
 		"[HandleAddWizardText] called",
 		"chatID", chatID,
 		"userID", userID,
 		"step", sess.Step,
 		"type", sess.Type,
-		"text", c.Text(),
+		"text", text,
 	)
 
 	switch sess.Step {
 	case session.StepTime:
-		return w.handleStepTime(c, sess)
+		return w.handleStepTimeWithText(c, sess, text)
 	case session.StepInterval:
-		return w.handleStepInterval(c, sess)
+		return w.handleStepIntervalWithText(c, sess, text)
 	case session.StepText:
-		return w.handleStepText(c, sess)
+		return w.handleStepTextWithText(c, sess, text)
 	case session.StepDate:
-		return w.handleStepDate(c, sess)
+		return w.handleStepDateWithText(c, sess, text)
 	}
 
 	slog.Warn("[HandleAddWizardText] unknown step", "step", sess.Step, "type", sess.Type)
 	return nil
 }
 
-func (w *AddReminderWizard) handleStepTime(c tele.Context, sess *session.AddReminderSession) error {
-	t := strings.TrimSpace(c.Text())
-	if !validator.IsTime(t) {
+// Добавляем вспомогательные методы для обработки текста без упоминания бота
+func (w *AddReminderWizard) handleStepTimeWithText(c tele.Context, sess *session.AddReminderSession, text string) error {
+	if !validator.IsTime(text) {
 		return c.Send(texts.ValidateEnterTime)
 	}
-	sess.Time = t
+	sess.Time = text
 	sess.Step = session.StepText
 	w.updateSession(sess)
 	return c.Send(texts.ValidateEnterText)
 }
 
-func (w *AddReminderWizard) handleStepInterval(c tele.Context, sess *session.AddReminderSession) error {
-	val := strings.TrimSpace(c.Text())
+func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *session.AddReminderSession, text string) error {
 	slog.Info(
 		"[handleStepInterval]",
 		"step", sess.Step,
 		"type", sess.Type,
-		"val", val,
+		"val", text,
 		"date", sess.Date,
 		"interval", sess.Interval,
 	)
 
 	switch sess.Type {
 	case ReminderTypeWeek:
-		weekday, ok := parseWeekday(val)
+		weekday, ok := parseWeekday(text)
 		if !ok {
 			return c.Send(texts.ValidateEnterWeekday)
 		}
@@ -198,10 +202,10 @@ func (w *AddReminderWizard) handleStepInterval(c tele.Context, sess *session.Add
 		}
 		return c.Send(texts.PromptEveryDay)
 	case ReminderTypeMonth:
-		if !validator.IsInterval(val) {
+		if !validator.IsInterval(text) {
 			return c.Send(texts.ValidateEnterMonth)
 		}
-		n, _ := strconv.Atoi(val)
+		n, _ := strconv.Atoi(text)
 		sess.Interval = n
 		sess.Step = session.StepTime
 		w.updateSession(sess)
@@ -211,22 +215,22 @@ func (w *AddReminderWizard) handleStepInterval(c tele.Context, sess *session.Add
 		}
 		return c.Send(texts.PromptEveryDay)
 	case ReminderTypeYear:
-		if !validator.IsDateDDMM(val) {
+		if !validator.IsDateDDMM(text) {
 			return c.Send(texts.ValidateEnterDateDDMM)
 		}
-		sess.Date = val
+		sess.Date = text
 		sess.Step = session.StepTime
 		w.updateSession(sess)
-		slog.Info("[handleStepInterval]", "set_year_date", val, "next_step", "StepTime")
+		slog.Info("[handleStepInterval]", "set_year_date", text, "next_step", "StepTime")
 		if err := c.Respond(); err != nil {
 			slog.Error("c.Respond error", "err", err)
 		}
 		return c.Send(texts.PromptEveryDay)
 	case ReminderTypeNDays:
-		if !validator.IsInterval(val) {
+		if !validator.IsInterval(text) {
 			return c.Send(texts.ValidateEnterInterval)
 		}
-		n, _ := strconv.Atoi(val)
+		n, _ := strconv.Atoi(text)
 		sess.Interval = n
 		sess.Step = session.StepTime
 		w.updateSession(sess)
@@ -236,46 +240,55 @@ func (w *AddReminderWizard) handleStepInterval(c tele.Context, sess *session.Add
 	return nil
 }
 
-func (w *AddReminderWizard) handleStepDate(c tele.Context, sess *session.AddReminderSession) error {
-	val := strings.TrimSpace(c.Text())
+func (w *AddReminderWizard) handleStepTextWithText(c tele.Context, sess *session.AddReminderSession, text string) error {
+	if !validator.IsNotEmpty(text) {
+		return c.Send(texts.ValidateEnterText)
+	}
+	sess.Text = text
+	sess.Step = session.StepConfirm
+	w.updateSession(sess)
+	return w.handleStepConfirm(c, sess)
+}
+
+func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session.AddReminderSession, text string) error {
 	slog.Info(
 		"[handleStepDate] called",
 		"step", sess.Step,
 		"type", sess.Type,
-		"val", val,
+		"val", text,
 		"date", sess.Date,
 		"interval", sess.Interval,
 	)
 
 	if sess.Type == ReminderTypeNDays {
 		if sess.Date != "" && sess.Interval == 0 {
-			if !validator.IsInterval(val) {
-				slog.Warn("[handleStepDate] NDays: invalid interval", "val", val)
+			if !validator.IsInterval(text) {
+				slog.Warn("[handleStepDate] NDays: invalid interval", "val", text)
 				return c.Send(texts.ValidateEnterInterval)
 			}
-			n, _ := strconv.Atoi(val)
+			n, _ := strconv.Atoi(text)
 			sess.Interval = n
 			sess.Step = session.StepTime
 			w.updateSession(sess)
 			slog.Info("[handleStepDate] NDays: set_interval", "interval", n, "next_step", "StepTime")
 			return c.Send(texts.PromptEveryDay)
 		}
-		if !validator.IsDateDDMMYYYY(val) {
-			slog.Warn("[handleStepDate] NDays: invalid date", "val", val)
+		if !validator.IsDateDDMMYYYY(text) {
+			slog.Warn("[handleStepDate] NDays: invalid date", "val", text)
 			return c.Send(texts.ValidateEnterDate)
 		}
-		sess.Date = val
+		sess.Date = text
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
-		slog.Info("[handleStepDate] NDays: set_date", "date", val, "next_step", "StepInterval")
+		slog.Info("[handleStepDate] NDays: set_date", "date", text, "next_step", "StepInterval")
 		return c.Send(texts.ValidateEnterInterval)
 	}
 
 	// Новый вариант для ReminderTypeDate: дата и время одним сообщением
 	if sess.Type == ReminderTypeDate {
-		parts := strings.Fields(val)
+		parts := strings.Fields(text)
 		if len(parts) != 2 || !validator.IsDateDDMMYYYY(parts[0]) || !validator.IsTime(parts[1]) {
-			slog.Warn("[handleStepDate] Date: invalid date/time", "val", val)
+			slog.Warn("[handleStepDate] Date: invalid date/time", "val", text)
 			return c.Send("Пожалуйста, введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ")
 		}
 		sess.Date = parts[0]

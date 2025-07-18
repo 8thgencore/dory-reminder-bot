@@ -69,7 +69,7 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	uc := usecase.NewReminderUsecase(repo)
 	userUc := usecase.NewUserUsecase(userRepo)
-	handler := handler.NewHandler(bot, uc, userUc)
+	handler := handler.NewHandler(bot, uc, userUc, cfg.Telegram.BotName)
 	handler.Register()
 
 	telegram.StartScheduler(bot, uc)

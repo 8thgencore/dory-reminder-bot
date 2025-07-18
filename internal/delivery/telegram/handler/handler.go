@@ -16,6 +16,7 @@ import (
 type Handler struct {
 	Bot        *tele.Bot
 	SessionMgr *session.SessionManager
+	BotName    string
 
 	// Компоненты
 	BasicCommands     *commands.BasicCommands
@@ -25,12 +26,13 @@ type Handler struct {
 }
 
 // NewHandler создает новый Handler для работы с напоминаниями
-func NewHandler(bot *tele.Bot, reminderUc usecase.ReminderUsecase, userUc usecase.UserUsecase) *Handler {
+func NewHandler(bot *tele.Bot, reminderUc usecase.ReminderUsecase, userUc usecase.UserUsecase, botName string) *Handler {
 	sessionMgr := session.NewSessionManager()
 
 	h := &Handler{
 		Bot:               bot,
 		SessionMgr:        sessionMgr,
+		BotName:           botName,
 		BasicCommands:     commands.NewBasicCommands(userUc, ui.GetMainMenu),
 		ReminderCRUD:      commands.NewReminderCRUD(reminderUc, userUc),
 		AddReminderWizard: wizards.NewAddReminderWizard(reminderUc, sessionMgr, userUc),
@@ -97,12 +99,21 @@ func (h *Handler) Register() {
 
 // onText обрабатывает текстовые сообщения (мастер добавления/таймзона)
 func (h *Handler) onText(c tele.Context) error {
+	// Проверяем, является ли это ответом на сообщение бота или упоминанием бота
+	isReply := c.Message().ReplyTo != nil
+	isMention := strings.Contains(c.Text(), "@"+h.BotName)
+
+	// В группах обрабатываем только ответы на сообщения бота или упоминания
+	if c.Chat().Type != "private" && !isReply && !isMention {
+		return nil
+	}
+
 	sess := h.SessionMgr.Get(c.Chat().ID, c.Sender().ID)
 	if sess != nil && sess.Step == session.StepTimezone {
-		return h.TimezoneWizard.HandleTimezoneText(c)
+		return h.TimezoneWizard.HandleTimezoneText(c, h.BotName)
 	}
 	if sess != nil && (sess.Step == session.StepTime || sess.Step == session.StepText || sess.Step == session.StepInterval || sess.Step == session.StepDate) {
-		return h.AddReminderWizard.HandleAddWizardText(c)
+		return h.AddReminderWizard.HandleAddWizardText(c, h.BotName)
 	}
 	return nil
 }
