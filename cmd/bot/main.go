@@ -11,6 +11,7 @@ import (
 
 	"github.com/8thgencore/dory-reminder-bot/internal/config"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram"
+	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/commands"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler"
 	"github.com/8thgencore/dory-reminder-bot/internal/repository"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
@@ -48,20 +49,7 @@ func main() {
 	}
 
 	// Устанавливаем команды бота для меню Telegram
-	commands := []tele.Command{
-		{Text: "start", Description: "Запустить бота"},
-		{Text: "help", Description: "Справка"},
-		{Text: "add", Description: "Добавить напоминание"},
-		{Text: "list", Description: "Список напоминаний"},
-		{Text: "edit", Description: "Редактировать напоминание"},
-		{Text: "delete", Description: "Удалить напоминание"},
-		{Text: "pause", Description: "Поставить на паузу"},
-		{Text: "resume", Description: "Возобновить"},
-		{Text: "timezone", Description: "Установить часовой пояс"},
-	}
-	if err := bot.SetCommands(commands); err != nil {
-		log.Error("Failed to set bot commands", "error", err)
-	}
+	commands.SetCommands(bot, log)
 
 	// Init DB
 	db, err := sql.Open("sqlite3", "data/reminders.db")
@@ -69,7 +57,11 @@ func main() {
 		log.Error("Failed to open database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Error("Failed to close database", "error", err)
+		}
+	}()
 
 	// Migrate schema
 	if err := repository.Migrate(db); err != nil {
@@ -81,18 +73,10 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	uc := usecase.NewReminderUsecase(repo)
 	userUc := usecase.NewUserUsecase(userRepo)
-	handler := handler.NewHandler(bot, uc, userUc)
+	handler := handler.NewHandler(bot, uc, userUc, cfg.Telegram.BotName)
 	handler.Register()
 
 	telegram.StartScheduler(bot, uc)
-
-	bot.Handle("/start", func(c tele.Context) error {
-		return handler.HandleStart(c, userUc)
-	})
-
-	bot.Handle("/help", func(c tele.Context) error {
-		return handler.HandleHelp(c)
-	})
 
 	log.Info("Bot started successfully")
 	bot.Start()

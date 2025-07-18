@@ -1,0 +1,7 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build application Docker image
+    cmds:
+      - docker buildx build --no-cache --platform linux/amd64 -t bot:latest .

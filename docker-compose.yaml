@@ -1,0 +1,7 @@
+services:
+  bot:
+    image: bot:latest
+    container_name: bot
+    restart: unless-stopped
+    env_file:
+      - .env

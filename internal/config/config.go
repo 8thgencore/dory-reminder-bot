@@ -24,7 +24,8 @@ type Config struct {
 
 // TelegramConfig is the configuration for the engine
 type TelegramConfig struct {
-	Token string `env:"TELEGRAM_TOKEN" env-required:"true"`
+	Token   string `env:"TELEGRAM_TOKEN" env-required:"true"`
+	BotName string `env:"BOT_NAME" env-default:"reminder_bot"`
 }
 
 // NewConfig creates a new instance of Config.
