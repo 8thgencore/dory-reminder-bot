@@ -8,6 +8,7 @@ import (
 	"github.com/8thgencore/dory-reminder-bot/internal/repository"
 )
 
+// ReminderUsecase определяет бизнес-логику для работы с напоминаниями.
 type ReminderUsecase interface {
 	AddReminder(ctx context.Context, r *domain.Reminder) error
 	EditReminder(ctx context.Context, r *domain.Reminder) error
@@ -22,6 +23,7 @@ type reminderUsecase struct {
 	repo repository.ReminderRepository
 }
 
+// NewReminderUsecase создает новый ReminderUsecase.
 func NewReminderUsecase(repo repository.ReminderRepository) ReminderUsecase {
 	return &reminderUsecase{repo: repo}
 }
@@ -33,7 +35,7 @@ func (u *reminderUsecase) AddReminder(ctx context.Context, r *domain.Reminder) e
 }
 
 func (u *reminderUsecase) EditReminder(ctx context.Context, r *domain.Reminder) error {
-	return nil
+	return u.repo.Update(ctx, r)
 }
 
 func (u *reminderUsecase) DeleteReminder(ctx context.Context, id int64) error {
@@ -46,6 +48,7 @@ func (u *reminderUsecase) PauseReminder(ctx context.Context, id int64) error {
 		return err
 	}
 	r.Paused = true
+
 	return u.repo.Update(ctx, r)
 }
 
@@ -55,6 +58,7 @@ func (u *reminderUsecase) ResumeReminder(ctx context.Context, id int64) error {
 		return err
 	}
 	r.Paused = false
+
 	return u.repo.Update(ctx, r)
 }
 
