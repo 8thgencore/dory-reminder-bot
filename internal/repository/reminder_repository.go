@@ -3,11 +3,52 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 )
+
+// SQL запросы вынесены в константы для лучшей читаемости и переиспользования
+const (
+	createReminderQuery = `INSERT INTO reminders (chat_id, user_id, text, next_time, repeat, repeat_days, 
+		repeat_every, paused, created_at, updated_at, timezone)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	updateReminderQuery = `UPDATE reminders SET chat_id=?, user_id=?, text=?, next_time=?, repeat=?, repeat_days=?, 
+		repeat_every=?, paused=?, created_at=?, updated_at=?, timezone=? WHERE id=?`
+
+	deleteReminderQuery = `DELETE FROM reminders WHERE id = ?`
+
+	getReminderByIDQuery = `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+		created_at, updated_at, timezone
+		FROM reminders WHERE id = ?`
+
+	listRemindersByChatQuery = `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+		created_at, updated_at, timezone
+		FROM reminders WHERE chat_id = ?`
+
+	listDueRemindersQuery = `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+		created_at, updated_at, timezone
+		FROM reminders WHERE next_time <= ? AND paused = 0`
+)
+
+// Ошибки репозитория
+var (
+	ErrReminderNotFound = errors.New("reminder not found")
+	ErrInvalidReminder  = errors.New("invalid reminder data")
+	ErrDatabaseError    = errors.New("database error")
+)
+
+// DBExecutor определяет интерфейс для работы с базой данных
+type DBExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+}
 
 // ReminderRepository определяет интерфейс репозитория напоминаний.
 type ReminderRepository interface {
@@ -20,30 +61,50 @@ type ReminderRepository interface {
 }
 
 type reminderRepository struct {
-	db *sql.DB
+	db DBExecutor
 }
 
 // NewReminderRepository создает новый ReminderRepository.
 func NewReminderRepository(db *sql.DB) ReminderRepository {
+	if db == nil {
+		panic("database connection cannot be nil")
+	}
 	return &reminderRepository{db: db}
 }
 
-// TODO: Реализация методов интерфейса
+// validateReminder проверяет корректность данных напоминания
+func validateReminder(rem *domain.Reminder) error {
+	if rem == nil {
+		return fmt.Errorf("%w: reminder is nil", ErrInvalidReminder)
+	}
+	if rem.Text == "" {
+		return fmt.Errorf("%w: reminder text cannot be empty", ErrInvalidReminder)
+	}
+	if rem.ChatID <= 0 {
+		return fmt.Errorf("%w: invalid chat ID", ErrInvalidReminder)
+	}
+	if rem.UserID <= 0 {
+		return fmt.Errorf("%w: invalid user ID", ErrInvalidReminder)
+	}
+	return nil
+}
 
 func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) error {
-	q := `INSERT INTO reminders (chat_id, user_id, text, next_time, repeat, repeat_days, 
-		repeat_every, paused, created_at, updated_at, timezone)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	days := ""
-	if len(rem.RepeatDays) > 0 {
-		for i, d := range rem.RepeatDays {
-			if i > 0 {
-				days += ","
-			}
-			days += strconv.Itoa(d)
-		}
+	if err := validateReminder(rem); err != nil {
+		return err
 	}
-	_, err := r.db.ExecContext(ctx, q,
+
+	// Устанавливаем временные метки если они не установлены
+	if rem.CreatedAt.IsZero() {
+		rem.CreatedAt = time.Now()
+	}
+	if rem.UpdatedAt.IsZero() {
+		rem.UpdatedAt = time.Now()
+	}
+
+	days := serializeRepeatDays(rem.RepeatDays)
+
+	result, err := r.db.ExecContext(ctx, createReminderQuery,
 		rem.ChatID,
 		rem.UserID,
 		rem.Text,
@@ -56,23 +117,33 @@ func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) e
 		rem.UpdatedAt,
 		rem.Timezone,
 	)
+	if err != nil {
+		return fmt.Errorf("%w: failed to create reminder: %v", ErrDatabaseError, err)
+	}
 
-	return err
+	// Получаем ID созданного напоминания
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("%w: failed to get last insert ID: %v", ErrDatabaseError, err)
+	}
+
+	rem.ID = id
+	return nil
 }
 
 func (r *reminderRepository) Update(ctx context.Context, rem *domain.Reminder) error {
-	q := `UPDATE reminders SET chat_id=?, user_id=?, text=?, next_time=?, repeat=?, repeat_days=?, 
-		repeat_every=?, paused=?, created_at=?, updated_at=?, timezone=? WHERE id=?`
-	days := ""
-	if len(rem.RepeatDays) > 0 {
-		for i, d := range rem.RepeatDays {
-			if i > 0 {
-				days += ","
-			}
-			days += strconv.Itoa(d)
-		}
+	if err := validateReminder(rem); err != nil {
+		return err
 	}
-	_, err := r.db.ExecContext(ctx, q,
+
+	if rem.ID <= 0 {
+		return fmt.Errorf("%w: invalid reminder ID", ErrInvalidReminder)
+	}
+
+	rem.UpdatedAt = time.Now()
+	days := serializeRepeatDays(rem.RepeatDays)
+
+	result, err := r.db.ExecContext(ctx, updateReminderQuery,
 		rem.ChatID,
 		rem.UserID,
 		rem.Text,
@@ -86,135 +157,171 @@ func (r *reminderRepository) Update(ctx context.Context, rem *domain.Reminder) e
 		rem.Timezone,
 		rem.ID,
 	)
+	if err != nil {
+		return fmt.Errorf("%w: failed to update reminder: %v", ErrDatabaseError, err)
+	}
 
-	return err
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%w: failed to get rows affected: %v", ErrDatabaseError, err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("%w: reminder with ID %d not found", ErrReminderNotFound, rem.ID)
+	}
+
+	return nil
 }
 
 func (r *reminderRepository) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM reminders WHERE id = ?", id)
-	return err
+	if id <= 0 {
+		return fmt.Errorf("%w: invalid reminder ID", ErrInvalidReminder)
+	}
+
+	result, err := r.db.ExecContext(ctx, deleteReminderQuery, id)
+	if err != nil {
+		return fmt.Errorf("%w: failed to delete reminder: %v", ErrDatabaseError, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%w: failed to get rows affected: %v", ErrDatabaseError, err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("%w: reminder with ID %d not found", ErrReminderNotFound, id)
+	}
+
+	return nil
 }
 
 func (r *reminderRepository) GetByID(ctx context.Context, id int64) (*domain.Reminder, error) {
-	q := `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
-		created_at, updated_at, timezone
-		FROM reminders WHERE id = ?`
-	row := r.db.QueryRowContext(ctx, q, id)
-	var rem domain.Reminder
-	var days string
-	if err := row.Scan(
-		&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days, &rem.RepeatEvery,
-		&rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
-	); err != nil {
-		return nil, err
-	}
-	if days != "" {
-		rem.RepeatDays = append(rem.RepeatDays, splitCommaInts(days)...)
+	if id <= 0 {
+		return nil, fmt.Errorf("%w: invalid reminder ID", ErrInvalidReminder)
 	}
 
-	return &rem, nil
+	row := r.db.QueryRowContext(ctx, getReminderByIDQuery, id)
+
+	rem, err := scanReminder(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: reminder with ID %d not found", ErrReminderNotFound, id)
+		}
+		return nil, fmt.Errorf("%w: failed to get reminder: %v", ErrDatabaseError, err)
+	}
+
+	return rem, nil
 }
 
 func (r *reminderRepository) ListByChat(ctx context.Context, chatID int64) ([]*domain.Reminder, error) {
-	q := `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
-		created_at, updated_at, timezone
-		FROM reminders WHERE chat_id = ?`
-	rows, err := r.db.QueryContext(ctx, q, chatID)
+	if chatID <= 0 {
+		return nil, fmt.Errorf("%w: invalid chat ID", ErrInvalidReminder)
+	}
+
+	rows, err := r.db.QueryContext(ctx, listRemindersByChatQuery, chatID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: failed to query reminders by chat: %v", ErrDatabaseError, err)
 	}
+	defer rows.Close()
 
-	defer func() {
-		_ = rows.Close()
-	}()
-
-	var res []*domain.Reminder
-	for rows.Next() {
-		var rem domain.Reminder
-		var days string
-		if err := rows.Scan(
-			&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
-			&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
-		); err != nil {
-			return nil, err
-		}
-		if days != "" {
-			rem.RepeatDays = append(rem.RepeatDays, splitCommaInts(days)...)
-		}
-		res = append(res, &rem)
-	}
-
-	return res, nil
+	return scanReminders(rows)
 }
 
 func (r *reminderRepository) ListDue(ctx context.Context, now time.Time) ([]*domain.Reminder, error) {
-	q := `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
-		created_at, updated_at, timezone
-		FROM reminders WHERE next_time <= ? AND paused = 0`
-	rows, err := r.db.QueryContext(ctx, q, now)
+	if now.IsZero() {
+		now = time.Now()
+	}
+
+	rows, err := r.db.QueryContext(ctx, listDueRemindersQuery, now)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to query due reminders: %v", ErrDatabaseError, err)
+	}
+	defer rows.Close()
+
+	return scanReminders(rows)
+}
+
+// serializeRepeatDays сериализует массив дней в строку для хранения в БД
+func serializeRepeatDays(days []int) string {
+	if len(days) == 0 {
+		return ""
+	}
+
+	var parts []string
+	for _, day := range days {
+		parts = append(parts, strconv.Itoa(day))
+	}
+	return strings.Join(parts, ",")
+}
+
+// scanReminder сканирует одну строку результата в структуру Reminder
+func scanReminder(row *sql.Row) (*domain.Reminder, error) {
+	var rem domain.Reminder
+	var days string
+
+	err := row.Scan(
+		&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
+		&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	defer func() {
-		_ = rows.Close()
-	}()
+	rem.RepeatDays = deserializeRepeatDays(days)
+	return &rem, nil
+}
 
-	var res []*domain.Reminder
+// scanReminders сканирует множество строк результата в слайс Reminder
+func scanReminders(rows *sql.Rows) ([]*domain.Reminder, error) {
+	var reminders []*domain.Reminder
+
 	for rows.Next() {
 		var rem domain.Reminder
 		var days string
-		if err := rows.Scan(
+
+		err := rows.Scan(
 			&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
 			&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
-		); err != nil {
+		)
+		if err != nil {
 			return nil, err
 		}
-		if days != "" {
-			rem.RepeatDays = append(rem.RepeatDays, splitCommaInts(days)...)
-		}
-		res = append(res, &rem)
+
+		rem.RepeatDays = deserializeRepeatDays(days)
+		reminders = append(reminders, &rem)
 	}
 
-	return res, nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return reminders, nil
 }
 
-func splitCommaInts(s string) []int {
-	var res []int
-	for _, part := range splitAndTrim(s, ",") {
+// deserializeRepeatDays десериализует строку дней обратно в массив
+func deserializeRepeatDays(days string) []int {
+	if days == "" {
+		return nil
+	}
+
+	var result []int
+	for _, part := range splitAndTrim(days, ",") {
 		if n, err := strconv.Atoi(part); err == nil {
-			res = append(res, n)
+			result = append(result, n)
 		}
 	}
 
-	return res
+	return result
 }
 
+// splitAndTrim разбивает строку по разделителю и удаляет пробелы
 func splitAndTrim(s, sep string) []string {
-	var out []string
-	out = append(out, splitNoEmpty(s, sep)...)
-	return out
-}
-
-func splitNoEmpty(s, sep string) []string {
-	var out []string
-	out = append(out, splitRaw(s, sep)...)
-	return out
-}
-
-func splitRaw(s, sep string) []string {
-	var res []string
-	start := 0
-	for i := 0; i+len(sep) <= len(s); {
-		if s[i:i+len(sep)] == sep {
-			res = append(res, s[start:i])
-			start = i + len(sep)
-			i = start
-		} else {
-			i++
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
 		}
 	}
-	res = append(res, s[start:])
-
-	return res
+	return out
 }

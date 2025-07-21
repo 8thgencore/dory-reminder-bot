@@ -503,6 +503,7 @@ func (w *AddReminderWizard) HandleMonthCallback(c tele.Context) error {
 
 // convertSessionToReminderWithTZ converts an AddReminderSession to a domain Reminder с учетом таймзоны
 func convertSessionToReminderWithTZ(sess *session.AddReminderSession, nextTime time.Time, tz string) *domain.Reminder {
+	now := time.Now().UTC()
 	return &domain.Reminder{
 		ChatID:      sess.ChatID,
 		UserID:      sess.UserID,
@@ -511,8 +512,8 @@ func convertSessionToReminderWithTZ(sess *session.AddReminderSession, nextTime t
 		Repeat:      typeToRepeat(sess.Type),
 		RepeatEvery: sess.Interval,
 		Paused:      false,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 		Timezone:    tz,
 	}
 }
