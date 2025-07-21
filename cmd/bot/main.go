@@ -52,7 +52,7 @@ func main() {
 	commands.SetCommands(bot, log)
 
 	// Create data directory if it doesn't exist
-	if err := os.MkdirAll("data", 0755); err != nil {
+	if err := os.MkdirAll("data", 0o755); err != nil {
 		log.Error("Failed to create data directory", "error", err)
 		os.Exit(1)
 	}
@@ -70,12 +70,7 @@ func main() {
 		}
 	}()
 
-	// Test database connection
-	if err := db.Ping(); err != nil {
-		log.Error("Failed to ping database", "error", err)
-		os.Exit(1)
-	}
-	log.Info("Database connection successful")
+	log.Info("Database connection opened")
 
 	// Migrate schema
 	if err := repository.Migrate(db); err != nil {
