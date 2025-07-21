@@ -11,17 +11,17 @@ import (
 )
 
 // StartScheduler запускает планировщик напоминаний
-func StartScheduler(bot *tele.Bot, uc usecase.ReminderUsecase) {
+func StartScheduler(bot *tele.Bot, uc usecase.ReminderUsecase, userUc usecase.UserUsecase) {
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			deliverDueReminders(bot, uc)
+			deliverDueReminders(bot, uc, userUc)
 		}
 	}()
 }
 
-func deliverDueReminders(bot *tele.Bot, uc usecase.ReminderUsecase) {
+func deliverDueReminders(bot *tele.Bot, uc usecase.ReminderUsecase, userUc usecase.UserUsecase) {
 	now := time.Now()
 	reminders, err := uc.ListDue(context.Background(), now)
 	if err != nil {
@@ -50,7 +50,16 @@ func deliverDueReminders(bot *tele.Bot, uc usecase.ReminderUsecase) {
 				slog.Info("One-time reminder deleted", "reminder_id", r.ID)
 			}
 		} else {
-			next := calcNextTimeForward(r, now)
+			// Получаем часовой пояс пользователя
+			user, err := userUc.GetOrCreateUser(context.Background(), r.ChatID, r.UserID, "", "", "")
+			loc := time.UTC
+			if err == nil && user != nil && user.Timezone != "" {
+				if l, err := time.LoadLocation(user.Timezone); err == nil {
+					loc = l
+				}
+			}
+
+			next := calcNextTimeForward(r, now, loc)
 			r.NextTime = next
 			r.UpdatedAt = now
 			if err := uc.EditReminder(context.Background(), r); err != nil {
@@ -64,9 +73,13 @@ func deliverDueReminders(bot *tele.Bot, uc usecase.ReminderUsecase) {
 
 // calcNextTimeForward: пересчитывает next_time для повторяющихся напоминаний так,
 // чтобы оно всегда было в будущем относительно now (даже если бот был выключен долго)
-func calcNextTimeForward(r *domain.Reminder, now time.Time) time.Time {
-	next := r.NextTime
-	for !next.After(now) {
+func calcNextTimeForward(r *domain.Reminder, now time.Time, loc *time.Location) time.Time {
+	// Конвертируем время в часовой пояс пользователя для правильного расчета
+	nextInUserTZ := r.NextTime.In(loc)
+	nowInUserTZ := now.In(loc)
+
+	next := nextInUserTZ
+	for !next.After(nowInUserTZ) {
 		switch r.Repeat {
 		case domain.RepeatEveryDay:
 			next = next.Add(24 * time.Hour)
@@ -83,5 +96,6 @@ func calcNextTimeForward(r *domain.Reminder, now time.Time) time.Time {
 		}
 	}
 
-	return next
+	// Возвращаем время в UTC для сохранения в БД
+	return next.UTC()
 }

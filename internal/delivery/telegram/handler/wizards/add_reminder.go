@@ -372,7 +372,7 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 	case ReminderTypeYear:
 		nextTime = w.TimeCalculator.GetNextTimeYear(now.In(loc), t, sess.Date)
 	case ReminderTypeDate:
-		nextTime = w.TimeCalculator.GetNextTimeDate(t, sess.Date)
+		nextTime = w.TimeCalculator.GetNextTimeDate(t, sess.Date, loc)
 	case ReminderTypeNDays:
 		startTime, err := time.ParseInLocation("02.01.2006", sess.Date, loc)
 		if err != nil {
@@ -384,7 +384,7 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 	slog.Info("[createReminderFromSession] calculated nextTime", "nextTime", nextTime, "sess.Date", sess.Date,
 		"sess.Time", sess.Time)
 
-	rem := convertSessionToReminderWithTZ(sess, nextTime, user.Timezone)
+	rem := convertSessionToReminderWithTZ(sess, nextTime)
 
 	// Для week/month/year/date сохраняем доп. параметры
 	switch sess.Type {
@@ -502,18 +502,17 @@ func (w *AddReminderWizard) HandleMonthCallback(c tele.Context) error {
 }
 
 // convertSessionToReminderWithTZ converts an AddReminderSession to a domain Reminder с учетом таймзоны
-func convertSessionToReminderWithTZ(sess *session.AddReminderSession, nextTime time.Time, tz string) *domain.Reminder {
+func convertSessionToReminderWithTZ(sess *session.AddReminderSession, nextTime time.Time) *domain.Reminder {
 	now := time.Now().UTC()
 	return &domain.Reminder{
 		ChatID:      sess.ChatID,
 		UserID:      sess.UserID,
 		Text:        sess.Text,
-		NextTime:    nextTime,
+		NextTime:    nextTime.UTC(), // Конвертируем в UTC для хранения в БД
 		Repeat:      typeToRepeat(sess.Type),
 		RepeatEvery: sess.Interval,
 		Paused:      false,
 		CreatedAt:   now,
 		UpdatedAt:   now,
-		Timezone:    tz,
 	}
 }
