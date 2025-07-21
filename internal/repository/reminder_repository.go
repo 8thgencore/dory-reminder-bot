@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -15,24 +16,24 @@ import (
 // SQL запросы вынесены в константы для лучшей читаемости и переиспользования
 const (
 	createReminderQuery = `INSERT INTO reminders (chat_id, user_id, text, next_time, repeat, repeat_days, 
-		repeat_every, paused, created_at, updated_at, timezone)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		repeat_every, paused, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	updateReminderQuery = `UPDATE reminders SET chat_id=?, user_id=?, text=?, next_time=?, repeat=?, repeat_days=?, 
-		repeat_every=?, paused=?, created_at=?, updated_at=?, timezone=? WHERE id=?`
+		repeat_every=?, paused=?, created_at=?, updated_at=? WHERE id=?`
 
 	deleteReminderQuery = `DELETE FROM reminders WHERE id = ?`
 
 	getReminderByIDQuery = `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
-		created_at, updated_at, timezone
+		created_at, updated_at
 		FROM reminders WHERE id = ?`
 
 	listRemindersByChatQuery = `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
-		created_at, updated_at, timezone
+		created_at, updated_at
 		FROM reminders WHERE chat_id = ?`
 
 	listDueRemindersQuery = `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
-		created_at, updated_at, timezone
+		created_at, updated_at
 		FROM reminders WHERE next_time <= ? AND paused = 0`
 )
 
@@ -86,6 +87,7 @@ func validateReminder(rem *domain.Reminder) error {
 	if rem.UserID <= 0 {
 		return fmt.Errorf("%w: invalid user ID", ErrInvalidReminder)
 	}
+
 	return nil
 }
 
@@ -115,7 +117,6 @@ func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) e
 		rem.Paused,
 		rem.CreatedAt,
 		rem.UpdatedAt,
-		rem.Timezone,
 	)
 	if err != nil {
 		return fmt.Errorf("%w: failed to create reminder: %v", ErrDatabaseError, err)
@@ -128,6 +129,7 @@ func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) e
 	}
 
 	rem.ID = id
+
 	return nil
 }
 
@@ -154,7 +156,6 @@ func (r *reminderRepository) Update(ctx context.Context, rem *domain.Reminder) e
 		rem.Paused,
 		rem.CreatedAt,
 		rem.UpdatedAt,
-		rem.Timezone,
 		rem.ID,
 	)
 	if err != nil {
@@ -222,7 +223,11 @@ func (r *reminderRepository) ListByChat(ctx context.Context, chatID int64) ([]*d
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to query reminders by chat: %v", ErrDatabaseError, err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Error("failed to close rows", "error", closeErr)
+		}
+	}()
 
 	return scanReminders(rows)
 }
@@ -236,7 +241,11 @@ func (r *reminderRepository) ListDue(ctx context.Context, now time.Time) ([]*dom
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to query due reminders: %v", ErrDatabaseError, err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Error("failed to close rows", "error", closeErr)
+		}
+	}()
 
 	return scanReminders(rows)
 }
@@ -251,6 +260,7 @@ func serializeRepeatDays(days []int) string {
 	for _, day := range days {
 		parts = append(parts, strconv.Itoa(day))
 	}
+
 	return strings.Join(parts, ",")
 }
 
@@ -261,13 +271,14 @@ func scanReminder(row *sql.Row) (*domain.Reminder, error) {
 
 	err := row.Scan(
 		&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
-		&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
+		&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	rem.RepeatDays = deserializeRepeatDays(days)
+
 	return &rem, nil
 }
 
@@ -281,7 +292,7 @@ func scanReminders(rows *sql.Rows) ([]*domain.Reminder, error) {
 
 		err := rows.Scan(
 			&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
-			&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt, &rem.Timezone,
+			&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -323,5 +334,6 @@ func splitAndTrim(s, sep string) []string {
 			out = append(out, trimmed)
 		}
 	}
+
 	return out
 }

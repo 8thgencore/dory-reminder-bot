@@ -52,7 +52,7 @@ func main() {
 	commands.SetCommands(bot, log)
 
 	// Create data directory if it doesn't exist
-	if err := os.MkdirAll("data", 0o755); err != nil {
+	if err := os.MkdirAll("data", 0o750); err != nil {
 		log.Error("Failed to create data directory", "error", err)
 		os.Exit(1)
 	}
@@ -86,7 +86,7 @@ func main() {
 	handler := handler.NewHandler(bot, uc, userUc, cfg.Telegram.BotName)
 	handler.Register()
 
-	telegram.StartScheduler(bot, uc)
+	telegram.StartScheduler(bot, uc, userUc)
 
 	log.Info("Bot started successfully")
 	bot.Start()

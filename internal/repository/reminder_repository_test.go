@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
+	"github.com/8thgencore/dory-reminder-bot/internal/repository/mocks"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,8 +32,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			repeat_every INTEGER,
 			paused BOOLEAN NOT NULL,
 			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL,
-			timezone TEXT
+			updated_at DATETIME NOT NULL
 		)
 	`)
 	require.NoError(t, err)
@@ -54,7 +54,6 @@ func createTestReminder() *domain.Reminder {
 		Paused:      false,
 		CreatedAt:   now,
 		UpdatedAt:   now,
-		Timezone:    "UTC",
 	}
 }
 
@@ -623,7 +622,6 @@ func TestReminderRepository_Integration(t *testing.T) {
 			RepeatDays:  []int{1, 2},
 			RepeatEvery: 0,
 			Paused:      false,
-			Timezone:    "UTC",
 		},
 		{
 			ChatID:      123,
@@ -634,7 +632,6 @@ func TestReminderRepository_Integration(t *testing.T) {
 			RepeatDays:  []int{3, 4, 5},
 			RepeatEvery: 0,
 			Paused:      false,
-			Timezone:    "Europe/Moscow",
 		},
 		{
 			ChatID:      789,
@@ -645,7 +642,6 @@ func TestReminderRepository_Integration(t *testing.T) {
 			RepeatDays:  nil,
 			RepeatEvery: 0,
 			Paused:      true,
-			Timezone:    "UTC",
 		},
 	}
 
@@ -705,8 +701,8 @@ func TestReminderRepository_Integration(t *testing.T) {
 
 func TestReminderRepository_Create_DatabaseErrors(t *testing.T) {
 	t.Run("exec context error", func(t *testing.T) {
-		mock := &mockDB{
-			execContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+		mock := &mocks.MockDB{
+			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
@@ -720,10 +716,10 @@ func TestReminderRepository_Create_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("last insert ID error", func(t *testing.T) {
-		mock := &mockDB{
-			execContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-				return &mockResult{
-					lastInsertIDFunc: func() (int64, error) {
+		mock := &mocks.MockDB{
+			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+				return &mocks.MockResult{
+					LastInsertIDFunc: func() (int64, error) {
 						return 0, errors.New("failed to get last insert ID")
 					},
 				}, nil
@@ -741,8 +737,8 @@ func TestReminderRepository_Create_DatabaseErrors(t *testing.T) {
 
 func TestReminderRepository_Update_DatabaseErrors(t *testing.T) {
 	t.Run("exec context error", func(t *testing.T) {
-		mock := &mockDB{
-			execContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+		mock := &mocks.MockDB{
+			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
@@ -757,10 +753,10 @@ func TestReminderRepository_Update_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("rows affected error", func(t *testing.T) {
-		mock := &mockDB{
-			execContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-				return &mockResult{
-					rowsAffectedFunc: func() (int64, error) {
+		mock := &mocks.MockDB{
+			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+				return &mocks.MockResult{
+					RowsAffectedFunc: func() (int64, error) {
 						return 0, errors.New("failed to get rows affected")
 					},
 				}, nil
@@ -779,8 +775,8 @@ func TestReminderRepository_Update_DatabaseErrors(t *testing.T) {
 
 func TestReminderRepository_Delete_DatabaseErrors(t *testing.T) {
 	t.Run("exec context error", func(t *testing.T) {
-		mock := &mockDB{
-			execContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+		mock := &mocks.MockDB{
+			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
@@ -793,10 +789,10 @@ func TestReminderRepository_Delete_DatabaseErrors(t *testing.T) {
 	})
 
 	t.Run("rows affected error", func(t *testing.T) {
-		mock := &mockDB{
-			execContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-				return &mockResult{
-					rowsAffectedFunc: func() (int64, error) {
+		mock := &mocks.MockDB{
+			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+				return &mocks.MockResult{
+					RowsAffectedFunc: func() (int64, error) {
 						return 0, errors.New("failed to get rows affected")
 					},
 				}, nil
@@ -828,8 +824,7 @@ func TestReminderRepository_GetByID_DatabaseErrors(t *testing.T) {
 			repeat_every INTEGER,
 			paused BOOLEAN NOT NULL,
 			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL,
-			timezone TEXT
+			updated_at DATETIME NOT NULL
 		)`)
 		assert.NoError(t, err)
 
@@ -842,8 +837,8 @@ func TestReminderRepository_GetByID_DatabaseErrors(t *testing.T) {
 
 func TestReminderRepository_ListByChat_DatabaseErrors(t *testing.T) {
 	t.Run("query context error", func(t *testing.T) {
-		mock := &mockDB{
-			queryContextFunc: func(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+		mock := &mocks.MockDB{
+			QueryContextFunc: func(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
@@ -858,8 +853,8 @@ func TestReminderRepository_ListByChat_DatabaseErrors(t *testing.T) {
 
 func TestReminderRepository_ListDue_DatabaseErrors(t *testing.T) {
 	t.Run("query context error", func(t *testing.T) {
-		mock := &mockDB{
-			queryContextFunc: func(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+		mock := &mocks.MockDB{
+			QueryContextFunc: func(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
