@@ -51,6 +51,13 @@ func main() {
 	// Устанавливаем команды бота для меню Telegram
 	commands.SetCommands(bot, log)
 
+	// Create data directory if it doesn't exist
+	if err := os.MkdirAll("data", 0755); err != nil {
+		log.Error("Failed to create data directory", "error", err)
+		os.Exit(1)
+	}
+	log.Info("Data directory created/verified", "path", "data")
+
 	// Init DB
 	db, err := sql.Open("sqlite3", "data/reminders.db")
 	if err != nil {
@@ -63,11 +70,19 @@ func main() {
 		}
 	}()
 
+	// Test database connection
+	if err := db.Ping(); err != nil {
+		log.Error("Failed to ping database", "error", err)
+		os.Exit(1)
+	}
+	log.Info("Database connection successful")
+
 	// Migrate schema
 	if err := repository.Migrate(db); err != nil {
 		log.Error("Failed to migrate database", "error", err)
 		os.Exit(1)
 	}
+	log.Info("Database migration completed")
 
 	repo := repository.NewReminderRepository(db)
 	userRepo := repository.NewUserRepository(db)
