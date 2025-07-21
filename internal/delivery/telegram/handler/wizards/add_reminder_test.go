@@ -70,6 +70,7 @@ type mockContext struct {
 	text      string
 	sendCalls []string
 	callback  *tele.Callback
+	message   *tele.Message
 }
 
 func (m *mockContext) Text() string {
@@ -91,6 +92,13 @@ func (m *mockContext) Chat() *tele.Chat {
 
 func (m *mockContext) Callback() *tele.Callback {
 	return m.callback
+}
+
+func (m *mockContext) Message() *tele.Message {
+	if m.message == nil {
+		m.message = &tele.Message{}
+	}
+	return m.message
 }
 
 func (m *mockContext) Respond(resp ...*tele.CallbackResponse) error {

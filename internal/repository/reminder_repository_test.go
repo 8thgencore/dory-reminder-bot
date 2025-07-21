@@ -107,6 +107,15 @@ func TestReminderRepository_Create(t *testing.T) {
 		assert.Greater(t, rem.ID, int64(0))
 	})
 
+	t.Run("creation with negative chat ID (group)", func(t *testing.T) {
+		rem := createTestReminder()
+		rem.ChatID = -12345 // Группа
+
+		err := repo.Create(context.Background(), rem)
+		require.NoError(t, err)
+		assert.Greater(t, rem.ID, int64(0))
+	})
+
 	t.Run("nil reminder", func(t *testing.T) {
 		err := repo.Create(context.Background(), nil)
 		assert.Error(t, err)
@@ -584,8 +593,7 @@ func TestValidateReminder(t *testing.T) {
 		rem := createTestReminder()
 		rem.ChatID = -1
 		err := validateReminder(rem)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid chat ID")
+		assert.NoError(t, err) // Отрицательные chatID валидны для групп
 	})
 
 	t.Run("invalid user ID", func(t *testing.T) {

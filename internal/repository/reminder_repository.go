@@ -81,7 +81,7 @@ func validateReminder(rem *domain.Reminder) error {
 	if rem.Text == "" {
 		return fmt.Errorf("%w: reminder text cannot be empty", ErrInvalidReminder)
 	}
-	if rem.ChatID <= 0 {
+	if rem.ChatID == 0 {
 		return fmt.Errorf("%w: invalid chat ID", ErrInvalidReminder)
 	}
 	if rem.UserID <= 0 {
@@ -92,7 +92,10 @@ func validateReminder(rem *domain.Reminder) error {
 }
 
 func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) error {
+	slog.Info("[Create] called", "reminder", rem)
+
 	if err := validateReminder(rem); err != nil {
+		slog.Error("[Create] validation failed", "reminder", rem, "error", err)
 		return err
 	}
 
@@ -105,6 +108,9 @@ func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) e
 	}
 
 	days := serializeRepeatDays(rem.RepeatDays)
+	slog.Info("[Create] prepared data",
+		"chatID", rem.ChatID, "userID", rem.UserID, "text", rem.Text,
+		"nextTime", rem.NextTime, "repeat", rem.Repeat, "days", days)
 
 	result, err := r.db.ExecContext(ctx, createReminderQuery,
 		rem.ChatID,
@@ -119,16 +125,19 @@ func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) e
 		rem.UpdatedAt,
 	)
 	if err != nil {
+		slog.Error("[Create] exec failed", "reminder", rem, "error", err)
 		return fmt.Errorf("%w: failed to create reminder: %v", ErrDatabaseError, err)
 	}
 
 	// Получаем ID созданного напоминания
 	id, err := result.LastInsertId()
 	if err != nil {
+		slog.Error("[Create] failed to get last insert ID", "reminder", rem, "error", err)
 		return fmt.Errorf("%w: failed to get last insert ID: %v", ErrDatabaseError, err)
 	}
 
 	rem.ID = id
+	slog.Info("[Create] reminder created successfully", "reminderID", id, "reminder", rem)
 
 	return nil
 }
