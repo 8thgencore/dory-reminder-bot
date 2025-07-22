@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
@@ -29,13 +30,17 @@ func (u *userUsecase) GetOrCreateUser(
 	chatID, userID int64,
 	username, firstName, lastName string,
 ) (*domain.User, error) {
+	slog.Info("[GetOrCreateUser] called", "chatID", chatID, "userID", userID, "username", username)
+
 	// Сначала пытаемся найти пользователя в текущем чате
 	user, err := u.userRepo.GetByChatAndUser(ctx, chatID, userID)
 	if err != nil {
+		slog.Error("[GetOrCreateUser] failed to get user", "chatID", chatID, "userID", userID, "error", err)
 		return nil, err
 	}
 
 	if user != nil {
+		slog.Info("[GetOrCreateUser] user found, updating", "user", user)
 		// Пользователь найден в текущем чате, обновляем информацию
 		user.Username = username
 		user.FirstName = firstName
@@ -43,12 +48,14 @@ func (u *userUsecase) GetOrCreateUser(
 		user.UpdatedAt = time.Now()
 		err = u.userRepo.Update(ctx, user)
 		if err != nil {
+			slog.Error("[GetOrCreateUser] failed to update user", "chatID", chatID, "userID", userID, "error", err)
 			return nil, err
 		}
 
 		return user, nil
 	}
 
+	slog.Info("[GetOrCreateUser] user not found, creating new", "chatID", chatID, "userID", userID)
 	// Пользователь не найден в текущем чате, создаем нового
 	now := time.Now()
 	user = &domain.User{
@@ -63,8 +70,11 @@ func (u *userUsecase) GetOrCreateUser(
 	}
 	err = u.userRepo.Create(ctx, user)
 	if err != nil {
+		slog.Error("[GetOrCreateUser] failed to create user", "chatID", chatID, "userID", userID, "error", err)
 		return nil, err
 	}
+
+	slog.Info("[GetOrCreateUser] user created successfully", "user", user)
 
 	return user, nil
 }
