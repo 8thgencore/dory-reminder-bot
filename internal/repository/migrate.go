@@ -19,8 +19,7 @@ func Migrate(db *sql.DB) error {
 		repeat_every INTEGER,
 		paused BOOLEAN NOT NULL DEFAULT 0,
 		created_at DATETIME NOT NULL,
-		updated_at DATETIME NOT NULL,
-		timezone TEXT
+		updated_at DATETIME NOT NULL
 	);
 	`)
 	if err != nil {
