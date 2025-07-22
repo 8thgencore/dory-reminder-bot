@@ -67,31 +67,6 @@ func (rc *ReminderCRUD) OnAdd(c tele.Context) error {
 	return c.Send(texts.HelpAdd, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, ui.GetAddMenu())
 }
 
-func escapeMarkdown(s string) string {
-	replacer := strings.NewReplacer(
-		"_", "\\_",
-		"*", "\\*",
-		"[", "\\[",
-		"]", "\\]",
-		"(", "\\(",
-		")", "\\)",
-		"~", "\\~",
-		"`", "\\`",
-		">", "\\>",
-		"#", "\\#",
-		"+", "\\+",
-		"-", "\\-",
-		"=", "\\=",
-		"|", "\\|",
-		"{", "\\{",
-		"}", "\\}",
-		".", "\\.",
-		"!", "\\!",
-	)
-
-	return replacer.Replace(s)
-}
-
 // OnList обрабатывает команду /list
 func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	reminders, err := rc.getReminders(c.Chat().ID)
@@ -127,9 +102,9 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 			status = "⏸ Приостановлено"
 		}
 
-		builder.WriteString(fmt.Sprintf("*%d.* %s\n", i+1, escapeMarkdown(r.Text)))
+		builder.WriteString(fmt.Sprintf("*%d.* %s\n", i+1, validator.EscapeMarkdown(r.Text)))
 		builder.WriteString(fmt.Sprintf("   %s | 📅 _%s_\n", status, r.NextTime.Format("02.01.2006 15:04")))
-		builder.WriteString(fmt.Sprintf("   🔁 Повтор: %s\n", escapeMarkdown(ui.FormatRepeat(r))))
+		builder.WriteString(fmt.Sprintf("   🔁 Повтор: %s\n", validator.EscapeMarkdown(ui.FormatRepeat(r))))
 		builder.WriteString("━━━━━━━━━━━━━━━\n")
 	}
 

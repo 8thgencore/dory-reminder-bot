@@ -140,6 +140,15 @@ func TestReminderRepository_Create(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid chat ID")
 	})
 
+	t.Run("negative chat ID (group) - should be valid", func(t *testing.T) {
+		rem := createTestReminder()
+		rem.ChatID = -12345 // Группа
+
+		err := repo.Create(context.Background(), rem)
+		require.NoError(t, err)
+		assert.Greater(t, rem.ID, int64(0))
+	})
+
 	t.Run("invalid user ID", func(t *testing.T) {
 		rem := createTestReminder()
 		rem.UserID = -1
@@ -353,14 +362,26 @@ func TestReminderRepository_ListByChat(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid chat ID")
 	})
 
-	t.Run("negative chat ID", func(t *testing.T) {
+	t.Run("negative chat ID (group) - should be valid", func(t *testing.T) {
 		db := setupTestDB(t)
 		defer db.Close()
 		repo := NewReminderRepository(db)
 
-		_, err := repo.ListByChat(context.Background(), -1)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid chat ID")
+		chatID := int64(-12345) // Группа
+
+		// Создаем напоминание для группы
+		rem := createTestReminder()
+		rem.ChatID = chatID
+		rem.Text = "Group reminder"
+
+		err := repo.Create(context.Background(), rem)
+		require.NoError(t, err)
+
+		// Получаем напоминания для группы
+		reminders, err := repo.ListByChat(context.Background(), chatID)
+		require.NoError(t, err)
+		assert.Len(t, reminders, 1)
+		assert.Equal(t, "Group reminder", reminders[0].Text)
 	})
 }
 

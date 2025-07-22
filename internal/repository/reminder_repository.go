@@ -224,7 +224,7 @@ func (r *reminderRepository) GetByID(ctx context.Context, id int64) (*domain.Rem
 }
 
 func (r *reminderRepository) ListByChat(ctx context.Context, chatID int64) ([]*domain.Reminder, error) {
-	if chatID <= 0 {
+	if chatID == 0 {
 		return nil, fmt.Errorf("%w: invalid chat ID", ErrInvalidReminder)
 	}
 
