@@ -150,9 +150,13 @@ func (w *AddReminderWizard) HandleAddWizardText(c tele.Context, botName string) 
 		"[HandleAddWizardText] called",
 		"chatID", chatID,
 		"userID", userID,
+		"chatType", c.Chat().Type,
 		"step", sess.Step,
 		"type", sess.Type,
 		"text", text,
+		"originalText", c.Text(),
+		"isReply", c.Message().ReplyTo != nil,
+		"isMention", strings.Contains(c.Text(), "@"+botName),
 	)
 
 	switch sess.Step {
@@ -258,12 +262,17 @@ func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *ses
 func (w *AddReminderWizard) handleStepTextWithText(c tele.Context, sess *session.AddReminderSession,
 	text string,
 ) error {
+	slog.Info("[handleStepTextWithText] called", "text", text, "chatID", sess.ChatID, "userID", sess.UserID)
+
 	if !validator.IsNotEmpty(text) {
+		slog.Warn("[handleStepTextWithText] empty text", "text", text)
 		return c.Send(texts.ValidateEnterText)
 	}
 	sess.Text = text
 	sess.Step = session.StepConfirm
 	w.updateSession(sess)
+
+	slog.Info("[handleStepTextWithText] text set, moving to confirm", "text", text, "step", sess.Step)
 
 	return w.handleStepConfirm(c, sess)
 }
@@ -328,11 +337,16 @@ func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session
 }
 
 func (w *AddReminderWizard) handleStepConfirm(c tele.Context, sess *session.AddReminderSession) error {
+	slog.Info("[handleStepConfirm] called", "session", sess)
+
 	err := w.createReminderFromSession(sess)
 	w.SessionManager.Delete(sess.ChatID, sess.UserID)
 	if err != nil {
+		slog.Error("[handleStepConfirm] failed to create reminder", "error", err, "session", sess)
 		return c.Send(texts.ErrCreateReminder)
 	}
+
+	slog.Info("[handleStepConfirm] reminder created successfully")
 
 	return c.Send("Напоминание создано!")
 }
@@ -342,20 +356,34 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 	var nextTime time.Time
 
 	slog.Info("[createReminderFromSession] before calculation", "type", sess.Type, "date", sess.Date,
-		"time", sess.Time, "interval", sess.Interval)
+		"time", sess.Time, "interval", sess.Interval, "chatID", sess.ChatID, "userID", sess.UserID)
 
 	// Получаем пользователя и его таймзону
 	user, err := w.UserUsecase.GetOrCreateUser(context.Background(), sess.ChatID, sess.UserID, "", "", "")
+	if err != nil {
+		slog.Error("[createReminderFromSession] failed to get/create user",
+			"chatID", sess.ChatID, "userID", sess.UserID, "error", err)
+		return err
+	}
+
+	if user != nil {
+		slog.Info("[createReminderFromSession] user retrieved", "user", user, "timezone", user.Timezone)
+	}
+
 	loc := time.Local
-	if err == nil && user != nil && user.Timezone != "" {
+	if user != nil && user.Timezone != "" {
 		if l, err := time.LoadLocation(user.Timezone); err == nil {
 			loc = l
+			slog.Info("[createReminderFromSession] using timezone", "timezone", user.Timezone)
+		} else {
+			slog.Warn("[createReminderFromSession] failed to load timezone", "timezone", user.Timezone, "error", err)
 		}
 	}
 
 	t, err := time.ParseInLocation("15:04", sess.Time, loc)
 	if err != nil {
 		slog.Warn("[createReminderFromSession] failed to parse time", "sess.Time", sess.Time, "err", err)
+		return err
 	}
 
 	switch sess.Type {
@@ -372,11 +400,12 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 	case ReminderTypeYear:
 		nextTime = w.TimeCalculator.GetNextTimeYear(now.In(loc), t, sess.Date)
 	case ReminderTypeDate:
-		nextTime = w.TimeCalculator.GetNextTimeDate(t, sess.Date)
+		nextTime = w.TimeCalculator.GetNextTimeDate(t, sess.Date, loc)
 	case ReminderTypeNDays:
 		startTime, err := time.ParseInLocation("02.01.2006", sess.Date, loc)
 		if err != nil {
 			slog.Warn("[createReminderFromSession] failed to parse date", "sess.Date", sess.Date, "err", err)
+			return err
 		}
 		nextTime = w.TimeCalculator.GetNextTimeNDays(startTime, t, sess.Interval)
 	}
@@ -384,7 +413,7 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 	slog.Info("[createReminderFromSession] calculated nextTime", "nextTime", nextTime, "sess.Date", sess.Date,
 		"sess.Time", sess.Time)
 
-	rem := convertSessionToReminderWithTZ(sess, nextTime, user.Timezone)
+	rem := convertSessionToReminderWithTZ(sess, nextTime)
 
 	// Для week/month/year/date сохраняем доп. параметры
 	switch sess.Type {
@@ -405,7 +434,15 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 
 	slog.Info("[createReminderFromSession] final reminder", "reminder", rem)
 
-	return w.ReminderUsecase.AddReminder(context.Background(), rem)
+	err = w.ReminderUsecase.AddReminder(context.Background(), rem)
+	if err != nil {
+		slog.Error("[createReminderFromSession] failed to add reminder", "error", err, "reminder", rem)
+		return err
+	}
+
+	slog.Info("[createReminderFromSession] reminder created successfully", "reminderID", rem.ID)
+
+	return nil
 }
 
 // typeToRepeat converts a string reminder type to a domain RepeatType
@@ -502,17 +539,17 @@ func (w *AddReminderWizard) HandleMonthCallback(c tele.Context) error {
 }
 
 // convertSessionToReminderWithTZ converts an AddReminderSession to a domain Reminder с учетом таймзоны
-func convertSessionToReminderWithTZ(sess *session.AddReminderSession, nextTime time.Time, tz string) *domain.Reminder {
+func convertSessionToReminderWithTZ(sess *session.AddReminderSession, nextTime time.Time) *domain.Reminder {
+	now := time.Now().UTC()
 	return &domain.Reminder{
 		ChatID:      sess.ChatID,
 		UserID:      sess.UserID,
 		Text:        sess.Text,
-		NextTime:    nextTime,
+		NextTime:    nextTime.UTC(), // Конвертируем в UTC для хранения в БД
 		Repeat:      typeToRepeat(sess.Type),
 		RepeatEvery: sess.Interval,
 		Paused:      false,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-		Timezone:    tz,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 }

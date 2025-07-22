@@ -77,13 +77,13 @@ func (tc *TimeCalculator) GetNextTimeYear(now time.Time, t time.Time, date strin
 }
 
 // GetNextTimeDate вычисляет время для разового напоминания на конкретную дату
-func (tc *TimeCalculator) GetNextTimeDate(t time.Time, date string) time.Time {
+func (tc *TimeCalculator) GetNextTimeDate(t time.Time, date string, loc *time.Location) time.Time {
 	parts := strings.Split(date, ".")
 	if len(parts) == 3 {
 		day, _ := strconv.Atoi(parts[0])
 		mon, _ := strconv.Atoi(parts[1])
 		year, _ := strconv.Atoi(parts[2])
-		return time.Date(year, time.Month(mon), day, t.Hour(), t.Minute(), 0, 0, time.Now().Location())
+		return time.Date(year, time.Month(mon), day, t.Hour(), t.Minute(), 0, 0, loc)
 	}
 
 	return time.Time{}
