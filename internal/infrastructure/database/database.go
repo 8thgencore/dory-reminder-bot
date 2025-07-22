@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/repository"
+	// SQLite driver registration
 	_ "github.com/mattn/go-sqlite3"
 )
 

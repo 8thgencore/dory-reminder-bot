@@ -92,40 +92,39 @@ func (w *AddReminderWizard) HandleAddTypeCallback(c tele.Context, typ string) er
 	sess := w.getSession(chatID, userID)
 	sess.Type = typ
 
+	// Удаляем сообщение с кнопками
+	if err := c.Delete(); err != nil {
+		slog.Warn("Failed to delete message with buttons", "error", err)
+	}
+
 	if typ == ReminderTypeWeek {
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
-		_ = c.Delete()
 		return c.Send(texts.PromptWeek, ui.WeekdaysMenu())
 	}
 	if typ == ReminderTypeMonth {
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
-		_ = c.Delete()
 		return c.Send(texts.ValidateEnterMonth)
 	}
 	if typ == ReminderTypeYear {
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
-		_ = c.Delete()
 		return c.Send(texts.ValidateEnterDateDDMM)
 	}
 	if typ == ReminderTypeNDays {
 		sess.Step = session.StepDate
 		w.updateSession(sess)
-		_ = c.Delete()
 		return c.Send(texts.ValidateEnterDate)
 	}
 	if typ == ReminderTypeDate {
 		sess.Step = session.StepDate
 		w.updateSession(sess)
-		_ = c.Delete()
 		return c.Send("Пожалуйста, введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ")
 	}
 
 	sess.Step = session.StepTime
 	w.updateSession(sess)
-	_ = c.Delete()
 	msg := getAddReminderMessage(typ)
 
 	return c.Send(msg)
@@ -192,14 +191,7 @@ func (w *AddReminderWizard) handleStepTimeWithText(c tele.Context, sess *session
 func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *session.AddReminderSession,
 	text string,
 ) error {
-	slog.Info(
-		"[handleStepInterval]",
-		"step", sess.Step,
-		"type", sess.Type,
-		"val", text,
-		"date", sess.Date,
-		"interval", sess.Interval,
-	)
+	slog.Info("[handleStepInterval]", "type", sess.Type, "val", text, "date", sess.Date, "interval", sess.Interval)
 
 	switch sess.Type {
 	case ReminderTypeWeek:
@@ -280,14 +272,7 @@ func (w *AddReminderWizard) handleStepTextWithText(c tele.Context, sess *session
 func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session.AddReminderSession,
 	text string,
 ) error {
-	slog.Info(
-		"[handleStepDate] called",
-		"step", sess.Step,
-		"type", sess.Type,
-		"val", text,
-		"date", sess.Date,
-		"interval", sess.Interval,
-	)
+	slog.Info("[handleStepDate] called", "type", sess.Type, "val", text, "date", sess.Date, "interval", sess.Interval)
 
 	if sess.Type == ReminderTypeNDays {
 		if sess.Date != "" && sess.Interval == 0 {
@@ -501,41 +486,12 @@ func (w *AddReminderWizard) HandleWeekdayCallback(c tele.Context) error {
 	sess.Step = session.StepTime
 	w.updateSession(sess)
 
+	// Удаляем сообщение с кнопками дней недели
+	if err := c.Delete(); err != nil {
+		slog.Warn("Failed to delete weekday buttons message", "error", err)
+	}
+
 	return c.Send(texts.PromptEveryDay)
-}
-
-// HandleMonthCallback обрабатывает inline-кнопки для месяцев
-func (w *AddReminderWizard) HandleMonthCallback(c tele.Context) error {
-	data := strings.TrimSpace(c.Callback().Data)
-	slog.Info("HandleMonthCallback", "callback_data", data)
-
-	userID := c.Sender().ID
-	chatID := c.Chat().ID
-	sess := w.getSession(chatID, userID)
-
-	if err := c.Respond(); err != nil {
-		slog.Error("c.Respond error", "err", err)
-	}
-
-	if sess == nil || sess.Type != ReminderTypeMonth || sess.Step != session.StepInterval {
-		return c.Send(texts.ErrUnknownMonth)
-	}
-
-	if !strings.HasPrefix(data, "month_") {
-		return c.Send(texts.ErrUnknownMonth)
-	}
-
-	monthStr := strings.TrimSpace(strings.TrimPrefix(data, "month_"))
-	month, err := strconv.Atoi(monthStr)
-	if err != nil || month < 1 || month > 12 {
-		return c.Send(texts.ErrUnknownMonth)
-	}
-
-	sess.Interval = month
-	sess.Step = session.StepText
-	w.updateSession(sess)
-
-	return c.Send(texts.ValidateEnterText)
 }
 
 // convertSessionToReminderWithTZ converts an AddReminderSession to a domain Reminder с учетом таймзоны
