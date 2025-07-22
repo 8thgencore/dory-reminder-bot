@@ -28,5 +28,4 @@ type Reminder struct {
 	Paused      bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-	Timezone    string
 }
