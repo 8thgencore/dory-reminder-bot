@@ -1,18 +1,17 @@
 package main
 
 import (
-	"database/sql"
 	"log/slog"
 	"os"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	tele "gopkg.in/telebot.v4"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/config"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/commands"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler"
+	"github.com/8thgencore/dory-reminder-bot/internal/infrastructure/database"
 	"github.com/8thgencore/dory-reminder-bot/internal/repository"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	"github.com/8thgencore/dory-reminder-bot/pkg/logger"
@@ -52,22 +51,12 @@ func main() {
 	commands.SetCommands(bot, log)
 
 	// Init DB
-	db, err := sql.Open("sqlite3", "data/reminders.db")
+	db, err := database.InitDatabase(log)
 	if err != nil {
-		log.Error("Failed to open database", "error", err)
+		log.Error("Failed to initialize database", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			log.Error("Failed to close database", "error", err)
-		}
-	}()
-
-	// Migrate schema
-	if err := repository.Migrate(db); err != nil {
-		log.Error("Failed to migrate database", "error", err)
-		os.Exit(1)
-	}
+	defer database.CloseDatabase(db, log)
 
 	repo := repository.NewReminderRepository(db)
 	userRepo := repository.NewUserRepository(db)
@@ -76,7 +65,7 @@ func main() {
 	handler := handler.NewHandler(bot, uc, userUc, cfg.Telegram.BotName)
 	handler.Register()
 
-	telegram.StartScheduler(bot, uc)
+	telegram.StartScheduler(bot, uc, userUc)
 
 	log.Info("Bot started successfully")
 	bot.Start()
