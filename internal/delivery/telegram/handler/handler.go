@@ -132,9 +132,6 @@ func (h *Handler) onCallback(c tele.Context) error {
 	if strings.HasPrefix(callbackData, "weekday_") {
 		return h.AddReminderWizard.HandleWeekdayCallback(c)
 	}
-	if strings.HasPrefix(callbackData, "month_") {
-		return h.AddReminderWizard.HandleMonthCallback(c)
-	}
 
 	return nil
 }
@@ -142,16 +139,34 @@ func (h *Handler) onCallback(c tele.Context) error {
 // Help menu callbacks (оставляем здесь для совместимости)
 func (h *Handler) cbHelpAdd(c tele.Context) error {
 	slog.Info("User requested help for adding reminders", "user_id", c.Sender().ID, "chat_id", c.Chat().ID)
+
+	// Удаляем сообщение с кнопками
+	if err := c.Delete(); err != nil {
+		slog.Warn("Failed to delete help menu message", "error", err)
+	}
+
 	return h.ReminderCRUD.OnAdd(c) // Перенаправляем в CRUD
 }
 
 func (h *Handler) cbHelpList(c tele.Context) error {
 	slog.Info("User requested help for listing reminders", "user_id", c.Sender().ID, "chat_id", c.Chat().ID)
+
+	// Удаляем сообщение с кнопками
+	if err := c.Delete(); err != nil {
+		slog.Warn("Failed to delete help menu message", "error", err)
+	}
+
 	return h.ReminderCRUD.OnList(c)
 }
 
 func (h *Handler) cbHelpManage(c tele.Context) error {
 	slog.Info("User requested help for managing reminders", "user_id", c.Sender().ID, "chat_id", c.Chat().ID)
+
+	// Удаляем сообщение с кнопками
+	if err := c.Delete(); err != nil {
+		slog.Warn("Failed to delete help menu message", "error", err)
+	}
+
 	// Здесь можно добавить справку по управлению или просто список
 	return h.ReminderCRUD.OnList(c)
 }

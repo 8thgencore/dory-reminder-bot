@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/ui"
@@ -77,6 +78,15 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 		return c.Send(texts.ErrNoReminders)
 	}
 
+	// Получаем часовой пояс пользователя
+	user, err := rc.UserUsecase.GetOrCreateUser(context.Background(), c.Chat().ID, c.Sender().ID, "", "", "")
+	loc := time.UTC
+	if err == nil && user != nil && user.Timezone != "" {
+		if l, err := time.LoadLocation(user.Timezone); err == nil {
+			loc = l
+		}
+	}
+
 	page := 0
 	if cb := c.Callback(); cb != nil {
 		data := strings.TrimSpace(cb.Data)
@@ -93,19 +103,36 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	}
 
 	var builder strings.Builder
-	builder.WriteString("*📋 Ваши напоминания*\n\n")
+	builder.WriteString("📋 *Ваши напоминания*\n\n")
+
+	// Добавляем информацию о часовом поясе
+	if user != nil && user.Timezone != "" {
+		builder.WriteString(fmt.Sprintf("🕐 *Часовой пояс:* %s\n\n", user.Timezone))
+	}
 
 	for i := start; i < end; i++ {
 		r := reminders[i]
-		status := "✅ Активно"
-		if r.Paused {
-			status = "⏸ Приостановлено"
+
+		// Статус с понятными эмодзи
+		status := ui.FormatStatus(r.Paused)
+
+		// Форматируем время в часовом поясе пользователя
+		timeStr := ui.FormatTime(r.NextTime, loc)
+
+		// Форматируем повтор с дополнительной информацией
+		repeatStr := ui.FormatRepeatWithDetails(r, loc)
+
+		builder.WriteString(fmt.Sprintf("*%d.* %s\n", i+1, ui.EscapeMarkdown(r.Text)))
+
+		// Отображаем статус только если напоминание приостановлено
+		if status != "" {
+			builder.WriteString(fmt.Sprintf("   %s | 📅 %s\n", status, timeStr))
+		} else {
+			builder.WriteString(fmt.Sprintf("   📅 %s\n", timeStr))
 		}
 
-		builder.WriteString(fmt.Sprintf("*%d.* %s\n", i+1, validator.EscapeMarkdown(r.Text)))
-		builder.WriteString(fmt.Sprintf("   %s | 📅 _%s_\n", status, r.NextTime.Format("02.01.2006 15:04")))
-		builder.WriteString(fmt.Sprintf("   🔁 Повтор: %s\n", validator.EscapeMarkdown(ui.FormatRepeat(r))))
-		builder.WriteString("━━━━━━━━━━━━━━━\n")
+		builder.WriteString(fmt.Sprintf("   🔁 %s\n", repeatStr))
+		builder.WriteString("\n")
 	}
 
 	msg := builder.String()

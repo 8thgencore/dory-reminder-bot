@@ -519,39 +519,6 @@ func TestAddWizard_HandleWeekdayCallback(t *testing.T) {
 	assert.Contains(t, c2.sendCalls[len(c2.sendCalls)-1], "неверный день недели")
 }
 
-// TestAddWizard_HandleMonthCallback проверяет обработку выбора месяца
-func TestAddWizard_HandleMonthCallback(t *testing.T) {
-	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
-
-	// Создаем сессию для месячного напоминания
-	sess := &session.AddReminderSession{
-		UserID: 1, ChatID: 1, Type: "month", Step: session.StepInterval,
-	}
-	sessionMgr.Set(sess)
-
-	// Тестируем валидный месяц
-	c := &mockContext{
-		callback: &tele.Callback{Data: "month_5"},
-	}
-	err := wizard.HandleMonthCallback(c)
-	assert.NoError(t, err)
-	sess = sessionMgr.Get(1, 1)
-	assert.Equal(t, 5, sess.Interval)
-	assert.Equal(t, session.StepText, sess.Step)
-	assert.NotEmpty(t, c.sendCalls)
-	assert.Contains(t, c.sendCalls[len(c.sendCalls)-1], "текст напоминания")
-
-	// Тестируем невалидный месяц
-	c2 := &mockContext{
-		callback: &tele.Callback{Data: "month_32"},
-	}
-	err = wizard.HandleMonthCallback(c2)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, c2.sendCalls)
-	assert.Contains(t, c2.sendCalls[len(c2.sendCalls)-1], "неверный месяц")
-}
-
 // TestAddWizard_ParseWeekday проверяет функцию парсинга дней недели
 func TestAddWizard_ParseWeekday(t *testing.T) {
 	tests := []struct {
