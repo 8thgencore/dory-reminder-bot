@@ -5,8 +5,8 @@ go 1.24.5
 require (
 	github.com/golang-cz/devslog v0.0.15
 	github.com/ilyakaznacheev/cleanenv v1.5.0
-	github.com/mattn/go-sqlite3 v1.14.28
-	github.com/stretchr/testify v1.8.0
+	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/stretchr/testify v1.11.1
 	gopkg.in/telebot.v4 v4.0.0-beta.5
 )
 

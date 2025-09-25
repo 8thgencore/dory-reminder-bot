@@ -11,42 +11,39 @@ import (
 
 // BasicCommands содержит обработчики базовых команд
 type BasicCommands struct {
-	UserUsecase usecase.UserUsecase
+	ChatUsecase usecase.ChatUsecase
 	GetMainMenu func() *tele.ReplyMarkup
 }
 
 // NewBasicCommands создает новый экземпляр BasicCommands
-func NewBasicCommands(userUc usecase.UserUsecase, getMainMenu func() *tele.ReplyMarkup) *BasicCommands {
+func NewBasicCommands(chatUc usecase.ChatUsecase, getMainMenu func() *tele.ReplyMarkup) *BasicCommands {
 	return &BasicCommands{
-		UserUsecase: userUc,
+		ChatUsecase: chatUc,
 		GetMainMenu: getMainMenu,
 	}
 }
 
 // HandleStart обрабатывает команду /start
 func (bc *BasicCommands) HandleStart(c tele.Context) error {
-	userID := c.Sender().ID
 	chatID := c.Chat().ID
 
-	// Безопасное получение данных пользователя (может быть nil в группах)
-	var username, firstName, lastName string
-	if c.Sender() != nil {
-		username = c.Sender().Username
-		firstName = c.Sender().FirstName
-		lastName = c.Sender().LastName
+	// Upsert chat on start
+	name := c.Chat().Title
+	if name == "" && c.Chat().FirstName != "" {
+		name = c.Chat().FirstName
 	}
+	username := c.Chat().Username
+	slog.Info("Start", "chat_id", chatID, "name", name, "username", username)
 
-	slog.Info("User started bot", "user_id", userID, "chat_id", chatID, "username", username)
-
-	_, err := bc.UserUsecase.GetOrCreateUser(context.Background(), chatID, userID, username, firstName, lastName)
+	_, err := bc.ChatUsecase.GetOrCreateChat(context.Background(), chatID, string(c.Chat().Type), name, username)
 	if err != nil {
-		slog.Error("Failed to create user", "user_id", userID, "chat_id", chatID, "error", err)
+		slog.Error("Failed to upsert chat", "chat_id", chatID, "error", err)
 		return c.Send(texts.ErrInitUser)
 	}
 
-	hasTZ, err := bc.UserUsecase.HasTimezone(context.Background(), chatID, userID)
+	hasTZ, err := bc.ChatUsecase.HasTimezone(context.Background(), chatID)
 	if err != nil {
-		slog.Error("Failed to check timezone", "user_id", userID, "chat_id", chatID, "error", err)
+		slog.Error("Failed to check timezone", "chat_id", chatID, "error", err)
 		return c.Send(texts.ErrCheckSettings)
 	}
 
@@ -60,5 +57,6 @@ func (bc *BasicCommands) HandleStart(c tele.Context) error {
 // HandleHelp обрабатывает команду /help
 func (bc *BasicCommands) HandleHelp(c tele.Context) error {
 	slog.Info("User requested help", "user_id", c.Sender().ID, "chat_id", c.Chat().ID)
-	return c.Send(texts.HelpText)
+
+	return c.Send(texts.HelpText, &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }

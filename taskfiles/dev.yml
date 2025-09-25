@@ -4,7 +4,7 @@ tasks:
   dev:
     desc: Run application in development mode with hot reload
     cmds:
-      - air 
+      - air
 
   lint:
     desc: Run linter on the codebase

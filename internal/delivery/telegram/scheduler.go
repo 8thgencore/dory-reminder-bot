@@ -11,17 +11,17 @@ import (
 )
 
 // StartScheduler запускает планировщик напоминаний
-func StartScheduler(bot *tele.Bot, uc usecase.ReminderUsecase, userUc usecase.UserUsecase) {
+func StartScheduler(bot *tele.Bot, uc usecase.ReminderUsecase, chatUc usecase.ChatUsecase) {
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			deliverDueReminders(bot, uc, userUc)
+			deliverDueReminders(bot, uc, chatUc)
 		}
 	}()
 }
 
-func deliverDueReminders(bot *tele.Bot, uc usecase.ReminderUsecase, userUc usecase.UserUsecase) {
+func deliverDueReminders(bot *tele.Bot, uc usecase.ReminderUsecase, chatUc usecase.ChatUsecase) {
 	now := time.Now()
 	reminders, err := uc.ListDue(context.Background(), now)
 	if err != nil {
@@ -50,11 +50,10 @@ func deliverDueReminders(bot *tele.Bot, uc usecase.ReminderUsecase, userUc useca
 				slog.Info("One-time reminder deleted", "reminder_id", r.ID)
 			}
 		} else {
-			// Получаем часовой пояс пользователя
-			user, err := userUc.GetOrCreateUser(context.Background(), r.ChatID, r.UserID, "", "", "")
+			// Получаем часовой пояс чата
 			loc := time.UTC
-			if err == nil && user != nil && user.Timezone != "" {
-				if l, err := time.LoadLocation(user.Timezone); err == nil {
+			if ch, err := chatUc.Get(context.Background(), r.ChatID); err == nil && ch != nil && ch.Timezone != "" {
+				if l, err := time.LoadLocation(ch.Timezone); err == nil {
 					loc = l
 				}
 			}

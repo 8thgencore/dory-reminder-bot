@@ -18,8 +18,12 @@ import (
 )
 
 func main() {
-	// Load config
-	cfg, err := config.NewConfig()
+	// Load config file name from environment variable, if set
+	configFile := os.Getenv("CONFIG_FILE")
+
+	// If CONFIG_FILE is empty, configFile will be an empty string,
+	// which is acceptable for config.NewConfig("")
+	cfg, err := config.NewConfig(configFile)
 	if err != nil {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
@@ -58,14 +62,14 @@ func main() {
 	}
 	defer database.CloseDatabase(db, log)
 
-	repo := repository.NewReminderRepository(db)
-	userRepo := repository.NewUserRepository(db)
-	uc := usecase.NewReminderUsecase(repo)
-	userUc := usecase.NewUserUsecase(userRepo)
-	handler := handler.NewHandler(bot, uc, userUc, cfg.Telegram.BotName)
+	reminderRepo := repository.NewReminderRepository(db)
+	chatRepo := repository.NewChatRepository(db)
+	reminderUc := usecase.NewReminderUsecase(reminderRepo)
+	chatUc := usecase.NewChatUsecase(chatRepo)
+	handler := handler.NewHandler(bot, reminderUc, chatUc, cfg.Telegram.BotName)
 	handler.Register()
 
-	telegram.StartScheduler(bot, uc, userUc)
+	telegram.StartScheduler(bot, reminderUc, chatUc)
 
 	log.Info("Bot started successfully")
 	bot.Start()

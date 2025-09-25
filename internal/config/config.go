@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -29,12 +30,24 @@ type TelegramConfig struct {
 }
 
 // NewConfig creates a new instance of Config.
-func NewConfig() (*Config, error) {
+func NewConfig(envFile string) (*Config, error) {
 	cfg := &Config{}
 
-	// Load environment variables
-	if err := cleanenv.ReadEnv(cfg); err != nil {
-		return nil, fmt.Errorf("failed to read env variables: %w", err)
+	var err error
+	if envFile != "" {
+		// Проверяем, существует ли файл
+		if _, err := os.Stat(envFile); os.IsNotExist(err) {
+			return nil, fmt.Errorf("env file %s does not exist", envFile)
+		}
+		// Загружаем из файла
+		err = cleanenv.ReadConfig(envFile, cfg)
+	} else {
+		// Загружаем из системных переменных окружения
+		err = cleanenv.ReadEnv(cfg)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
 	return cfg, nil

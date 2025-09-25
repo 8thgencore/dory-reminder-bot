@@ -22,20 +22,20 @@ const remindersPerPage = 10
 // ReminderCRUD содержит обработчики CRUD операций с напоминаниями
 type ReminderCRUD struct {
 	Usecase     usecase.ReminderUsecase
-	UserUsecase usecase.UserUsecase
+	ChatUsecase usecase.ChatUsecase
 }
 
 // NewReminderCRUD создает новый экземпляр ReminderCRUD
-func NewReminderCRUD(reminderUc usecase.ReminderUsecase, userUc usecase.UserUsecase) *ReminderCRUD {
+func NewReminderCRUD(reminderUc usecase.ReminderUsecase, chatUc usecase.ChatUsecase) *ReminderCRUD {
 	return &ReminderCRUD{
 		Usecase:     reminderUc,
-		UserUsecase: userUc,
+		ChatUsecase: chatUc,
 	}
 }
 
 // checkTimezone проверяет, установлен ли таймзона у пользователя
 func (rc *ReminderCRUD) checkTimezone(c tele.Context) (bool, error) {
-	return rc.UserUsecase.HasTimezone(context.Background(), c.Chat().ID, c.Sender().ID)
+	return rc.ChatUsecase.HasTimezone(context.Background(), c.Chat().ID)
 }
 
 // getReminders возвращает список напоминаний для чата
@@ -79,10 +79,9 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	}
 
 	// Получаем часовой пояс пользователя
-	user, err := rc.UserUsecase.GetOrCreateUser(context.Background(), c.Chat().ID, c.Sender().ID, "", "", "")
 	loc := time.UTC
-	if err == nil && user != nil && user.Timezone != "" {
-		if l, err := time.LoadLocation(user.Timezone); err == nil {
+	if ch, err := rc.ChatUsecase.Get(context.Background(), c.Chat().ID); err == nil && ch != nil && ch.Timezone != "" {
+		if l, err := time.LoadLocation(ch.Timezone); err == nil {
 			loc = l
 		}
 	}
@@ -105,9 +104,9 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	var builder strings.Builder
 	builder.WriteString("📋 *Ваши напоминания*\n\n")
 
-	// Добавляем информацию о часовом поясе
-	if user != nil && user.Timezone != "" {
-		builder.WriteString(fmt.Sprintf("🕐 *Часовой пояс:* %s\n\n", user.Timezone))
+	// Добавляем информацию о часовом поясе чата
+	if ch, err := rc.ChatUsecase.Get(context.Background(), c.Chat().ID); err == nil && ch != nil && ch.Timezone != "" {
+		builder.WriteString(fmt.Sprintf("🕐 *Часовой пояс:* %s\n\n", ch.Timezone))
 	}
 
 	for i := start; i < end; i++ {

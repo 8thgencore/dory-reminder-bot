@@ -1,0 +1,13 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bot:latest
+    container_name: bot-dev
+    restart: unless-stopped
+    user: 10001:10001
+    env_file:
+      - .env.dev
+    volumes:
+      - ./data_dev:/opt/app/data

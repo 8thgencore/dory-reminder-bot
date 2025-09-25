@@ -23,6 +23,8 @@ go.work.sum
 
 # env file
 .env
+.env.*
+*.env
 
 # Directory with binary files
 /bin/

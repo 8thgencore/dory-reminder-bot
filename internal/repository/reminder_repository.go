@@ -15,26 +15,26 @@ import (
 
 // SQL запросы вынесены в константы для лучшей читаемости и переиспользования
 const (
-	createReminderQuery = `INSERT INTO reminders (chat_id, user_id, text, next_time, repeat, repeat_days, 
-		repeat_every, paused, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	createReminderQuery = `INSERT INTO reminders (chat_id, text, next_time, repeat, repeat_days, 
+        repeat_every, paused, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	updateReminderQuery = `UPDATE reminders SET chat_id=?, user_id=?, text=?, next_time=?, repeat=?, repeat_days=?, 
-		repeat_every=?, paused=?, created_at=?, updated_at=? WHERE id=?`
+	updateReminderQuery = `UPDATE reminders SET chat_id=?, text=?, next_time=?, repeat=?, repeat_days=?, 
+        repeat_every=?, paused=?, created_at=?, updated_at=? WHERE id=?`
 
 	deleteReminderQuery = `DELETE FROM reminders WHERE id = ?`
 
-	getReminderByIDQuery = `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
-		created_at, updated_at
-		FROM reminders WHERE id = ?`
+	getReminderByIDQuery = `SELECT id, chat_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+        created_at, updated_at
+        FROM reminders WHERE id = ?`
 
-	listRemindersByChatQuery = `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
-		created_at, updated_at
-		FROM reminders WHERE chat_id = ?`
+	listRemindersByChatQuery = `SELECT id, chat_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+        created_at, updated_at
+        FROM reminders WHERE chat_id = ?`
 
-	listDueRemindersQuery = `SELECT id, chat_id, user_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
-		created_at, updated_at
-		FROM reminders WHERE next_time <= ? AND paused = 0`
+	listDueRemindersQuery = `SELECT id, chat_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+        created_at, updated_at
+        FROM reminders WHERE next_time <= ? AND paused = 0`
 )
 
 // Ошибки репозитория
@@ -84,9 +84,7 @@ func validateReminder(rem *domain.Reminder) error {
 	if rem.ChatID == 0 {
 		return fmt.Errorf("%w: invalid chat ID", ErrInvalidReminder)
 	}
-	if rem.UserID <= 0 {
-		return fmt.Errorf("%w: invalid user ID", ErrInvalidReminder)
-	}
+	// user scope removed; we only validate chat
 
 	return nil
 }
@@ -109,12 +107,11 @@ func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) e
 
 	days := serializeRepeatDays(rem.RepeatDays)
 	slog.Info("[Create] prepared data",
-		"chatID", rem.ChatID, "userID", rem.UserID, "text", rem.Text,
+		"chatID", rem.ChatID, "text", rem.Text,
 		"nextTime", rem.NextTime, "repeat", rem.Repeat, "days", days)
 
 	result, err := r.db.ExecContext(ctx, createReminderQuery,
 		rem.ChatID,
-		rem.UserID,
 		rem.Text,
 		rem.NextTime,
 		rem.Repeat,
@@ -156,7 +153,6 @@ func (r *reminderRepository) Update(ctx context.Context, rem *domain.Reminder) e
 
 	result, err := r.db.ExecContext(ctx, updateReminderQuery,
 		rem.ChatID,
-		rem.UserID,
 		rem.Text,
 		rem.NextTime,
 		rem.Repeat,
@@ -279,7 +275,7 @@ func scanReminder(row *sql.Row) (*domain.Reminder, error) {
 	var days string
 
 	err := row.Scan(
-		&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
+		&rem.ID, &rem.ChatID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
 		&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt,
 	)
 	if err != nil {
@@ -300,7 +296,7 @@ func scanReminders(rows *sql.Rows) ([]*domain.Reminder, error) {
 		var days string
 
 		err := rows.Scan(
-			&rem.ID, &rem.ChatID, &rem.UserID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
+			&rem.ID, &rem.ChatID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
 			&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt,
 		)
 		if err != nil {

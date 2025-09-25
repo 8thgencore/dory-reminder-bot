@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 
@@ -17,6 +18,7 @@ type Handler struct {
 	Bot        *tele.Bot
 	SessionMgr *session.Manager
 	BotName    string
+	ChatUC     usecase.ChatUsecase
 
 	// Компоненты
 	BasicCommands     *commands.BasicCommands
@@ -26,7 +28,8 @@ type Handler struct {
 }
 
 // NewHandler создает новый Handler для работы с напоминаниями
-func NewHandler(bot *tele.Bot, reminderUc usecase.ReminderUsecase, userUc usecase.UserUsecase,
+func NewHandler(bot *tele.Bot, reminderUc usecase.ReminderUsecase,
+	chatUc usecase.ChatUsecase,
 	botName string,
 ) *Handler {
 	sessionMgr := session.NewSessionManager()
@@ -35,10 +38,11 @@ func NewHandler(bot *tele.Bot, reminderUc usecase.ReminderUsecase, userUc usecas
 		Bot:               bot,
 		SessionMgr:        sessionMgr,
 		BotName:           botName,
-		BasicCommands:     commands.NewBasicCommands(userUc, ui.GetMainMenu),
-		ReminderCRUD:      commands.NewReminderCRUD(reminderUc, userUc),
-		AddReminderWizard: wizards.NewAddReminderWizard(reminderUc, sessionMgr, userUc),
-		TimezoneWizard:    wizards.NewTimezoneWizard(userUc, sessionMgr, ui.GetMainMenu),
+		ChatUC:            chatUc,
+		BasicCommands:     commands.NewBasicCommands(chatUc, ui.GetMainMenu),
+		ReminderCRUD:      commands.NewReminderCRUD(reminderUc, chatUc),
+		AddReminderWizard: wizards.NewAddReminderWizard(reminderUc, sessionMgr, chatUc, botName),
+		TimezoneWizard:    wizards.NewTimezoneWizard(chatUc, sessionMgr, ui.GetMainMenu, botName),
 	}
 
 	return h
@@ -101,6 +105,21 @@ func (h *Handler) Register() {
 
 // onText обрабатывает текстовые сообщения (мастер добавления/таймзона)
 func (h *Handler) onText(c tele.Context) error {
+	// Upsert chat on any text update
+	if c.Chat() != nil {
+		name := c.Chat().Title
+		if name == "" && c.Chat().FirstName != "" {
+			name = c.Chat().FirstName
+		}
+		_, _ = h.ChatUC.GetOrCreateChat(
+			context.Background(),
+			c.Chat().ID,
+			string(c.Chat().Type),
+			name,
+			c.Chat().Username,
+		) // best-effort
+	}
+	// Unified model: no user creation needed
 	// Проверяем, является ли это ответом на сообщение бота или упоминанием бота
 	isReply := c.Message().ReplyTo != nil
 	isMention := strings.Contains(c.Text(), "@"+h.BotName)
@@ -145,16 +164,11 @@ func (h *Handler) cbHelpAdd(c tele.Context) error {
 		slog.Warn("Failed to delete help menu message", "error", err)
 	}
 
-	return h.ReminderCRUD.OnAdd(c) // Перенаправляем в CRUD
+	return h.ReminderCRUD.OnAdd(c)
 }
 
 func (h *Handler) cbHelpList(c tele.Context) error {
 	slog.Info("User requested help for listing reminders", "user_id", c.Sender().ID, "chat_id", c.Chat().ID)
-
-	// Удаляем сообщение с кнопками
-	if err := c.Delete(); err != nil {
-		slog.Warn("Failed to delete help menu message", "error", err)
-	}
 
 	return h.ReminderCRUD.OnList(c)
 }
@@ -162,11 +176,5 @@ func (h *Handler) cbHelpList(c tele.Context) error {
 func (h *Handler) cbHelpManage(c tele.Context) error {
 	slog.Info("User requested help for managing reminders", "user_id", c.Sender().ID, "chat_id", c.Chat().ID)
 
-	// Удаляем сообщение с кнопками
-	if err := c.Delete(); err != nil {
-		slog.Warn("Failed to delete help menu message", "error", err)
-	}
-
-	// Здесь можно добавить справку по управлению или просто список
-	return h.ReminderCRUD.OnList(c)
+	return h.BasicCommands.HandleHelp(c)
 }

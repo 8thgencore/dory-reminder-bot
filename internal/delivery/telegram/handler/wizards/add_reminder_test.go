@@ -42,27 +42,22 @@ func (m *mockReminderUsecase) ListDue(ctx context.Context, now time.Time) ([]*do
 	return nil, nil
 }
 
-type mockUserUsecase struct{}
+type mockChatUsecase struct{}
 
-func (m *mockUserUsecase) GetOrCreateUser(ctx context.Context, chatID, userID int64, username, firstName, lastName string) (*domain.User, error) {
-	return &domain.User{
-		ID:        userID,
-		ChatID:    chatID,
-		Username:  username,
-		FirstName: firstName,
-		LastName:  lastName,
-		Timezone:  "Europe/Moscow",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}, nil
+func (m *mockChatUsecase) Get(ctx context.Context, chatID int64) (*domain.Chat, error) {
+	return &domain.Chat{ID: chatID, Type: "private", Name: "Test", Username: "", Timezone: "Europe/Moscow", CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
 }
 
-func (m *mockUserUsecase) SetTimezone(ctx context.Context, chatID, userID int64, timezone string) error {
-	return nil
+func (m *mockChatUsecase) GetOrCreateChat(ctx context.Context, chatID int64, chatType, name, username string) (*domain.Chat, error) {
+	return &domain.Chat{ID: chatID, Type: chatType, Name: name, Username: username, Timezone: "Europe/Moscow", CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
 }
 
-func (m *mockUserUsecase) HasTimezone(ctx context.Context, chatID, userID int64) (bool, error) {
+func (m *mockChatUsecase) HasTimezone(ctx context.Context, chatID int64) (bool, error) {
 	return true, nil
+}
+
+func (m *mockChatUsecase) SetTimezone(ctx context.Context, chatID int64, timezone string) error {
+	return nil
 }
 
 type mockContext struct {
@@ -112,7 +107,7 @@ func (m *mockContext) Delete() error {
 // TestAddWizard_NDaysFlow проверяет сценарий добавления напоминания с типом ndays.
 func TestAddWizard_NDaysFlow(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Шаг 1: пользователь выбрал тип "ndays", сессия ожидает дату
 	sess := &session.AddReminderSession{
@@ -144,7 +139,7 @@ func TestAddWizard_NDaysFlow(t *testing.T) {
 // TestAddWizard_TodayFlow проверяет сценарий добавления напоминания на сегодня
 func TestAddWizard_TodayFlow(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Шаг 1: пользователь выбрал тип "today", сессия ожидает время
 	sess := &session.AddReminderSession{
@@ -176,7 +171,7 @@ func TestAddWizard_TodayFlow(t *testing.T) {
 // TestAddWizard_EveryDayFlow проверяет сценарий добавления ежедневного напоминания
 func TestAddWizard_EveryDayFlow(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Шаг 1: пользователь выбрал тип "everyday", сессия ожидает время
 	sess := &session.AddReminderSession{
@@ -206,7 +201,7 @@ func TestAddWizard_EveryDayFlow(t *testing.T) {
 // TestAddWizard_WeekFlow проверяет сценарий добавления еженедельного напоминания
 func TestAddWizard_WeekFlow(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Шаг 1: пользователь выбрал тип "week", сессия ожидает день недели
 	sess := &session.AddReminderSession{
@@ -246,7 +241,7 @@ func TestAddWizard_WeekFlow(t *testing.T) {
 // TestAddWizard_MonthFlow проверяет сценарий добавления ежемесячного напоминания
 func TestAddWizard_MonthFlow(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Шаг 1: пользователь выбрал тип "month", сессия ожидает число месяца
 	sess := &session.AddReminderSession{
@@ -284,7 +279,7 @@ func TestAddWizard_MonthFlow(t *testing.T) {
 // TestAddWizard_YearFlow проверяет сценарий добавления ежегодного напоминания
 func TestAddWizard_YearFlow(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Шаг 1: пользователь выбрал тип "year", сессия ожидает дату ДД.ММ
 	sess := &session.AddReminderSession{
@@ -322,7 +317,7 @@ func TestAddWizard_YearFlow(t *testing.T) {
 // TestAddWizard_DateFlow проверяет сценарий добавления напоминания на конкретную дату
 func TestAddWizard_DateFlow(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Шаг 1: пользователь выбрал тип "date", сессия ожидает дату и время
 	sess := &session.AddReminderSession{
@@ -353,7 +348,7 @@ func TestAddWizard_DateFlow(t *testing.T) {
 // TestAddWizard_InvalidInputs проверяет обработку некорректных входных данных
 func TestAddWizard_InvalidInputs(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	tests := []struct {
 		name     string
@@ -434,7 +429,7 @@ func TestAddWizard_InvalidInputs(t *testing.T) {
 // TestAddWizard_BotMentionRemoval проверяет удаление упоминания бота из текста
 func TestAddWizard_BotMentionRemoval(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	sess := &session.AddReminderSession{
 		UserID: 1, ChatID: 1, Type: "today", Step: session.StepTime,
@@ -453,7 +448,7 @@ func TestAddWizard_BotMentionRemoval(t *testing.T) {
 // TestAddWizard_HandleAddTypeCallback проверяет обработку выбора типа напоминания
 func TestAddWizard_HandleAddTypeCallback(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	tests := []struct {
 		name     string
@@ -489,7 +484,7 @@ func TestAddWizard_HandleAddTypeCallback(t *testing.T) {
 // TestAddWizard_HandleWeekdayCallback проверяет обработку выбора дня недели
 func TestAddWizard_HandleWeekdayCallback(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Создаем сессию для недельного напоминания
 	sess := &session.AddReminderSession{
@@ -576,7 +571,7 @@ func TestAddWizard_GetAddReminderMessage(t *testing.T) {
 // TestAddWizard_SessionManagement проверяет управление сессиями
 func TestAddWizard_SessionManagement(t *testing.T) {
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Тест получения несуществующей сессии
 	sess := wizard.getSession(1, 1)
@@ -600,7 +595,7 @@ func TestAddWizard_TypeToRepeat(t *testing.T) {
 	// Тестируем функцию typeToRepeat (если она экспортирована)
 	// В данном случае она не экспортирована, но можно протестировать через публичные методы
 	sessionMgr := session.NewSessionManager()
-	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockUserUsecase{})
+	wizard := NewAddReminderWizard(&mockReminderUsecase{}, sessionMgr, &mockChatUsecase{}, "reminder_bot")
 
 	// Создаем сессию с типом everyday
 	sess := &session.AddReminderSession{

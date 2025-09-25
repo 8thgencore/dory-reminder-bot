@@ -14,21 +14,32 @@ import (
 
 // TimezoneWizard обрабатывает мастер настройки часового пояса
 type TimezoneWizard struct {
-	UserUsecase    usecase.UserUsecase
+	ChatUsecase    usecase.ChatUsecase
 	SessionManager *session.Manager
 	GetMainMenu    func() *tele.ReplyMarkup
+	BotName        string
 }
 
 // NewTimezoneWizard создает новый экземпляр мастера настройки часового пояса
-// NewTimezoneWizard создает новый экземпляр мастера настройки часового пояса
-func NewTimezoneWizard(userUc usecase.UserUsecase, sessionMgr *session.Manager,
+func NewTimezoneWizard(
+	chatUc usecase.ChatUsecase,
+	sessionMgr *session.Manager,
 	getMainMenu func() *tele.ReplyMarkup,
+	botName string,
 ) *TimezoneWizard {
 	return &TimezoneWizard{
-		UserUsecase:    userUc,
+		ChatUsecase:    chatUc,
 		SessionManager: sessionMgr,
 		GetMainMenu:    getMainMenu,
+		BotName:        botName,
 	}
+}
+
+func (tw *TimezoneWizard) withGroupHint(c tele.Context, msg string) string {
+	if c.Chat().Type != "private" && msg != texts.PromptUnknown {
+		return msg + "\n\nЧтобы бот увидел ваш ответ, добавьте в конце @" + tw.BotName
+	}
+	return msg
 }
 
 // OnTimezone обрабатывает команду /timezone
@@ -39,7 +50,7 @@ func (tw *TimezoneWizard) OnTimezone(c tele.Context) error {
 		Step:   session.StepTimezone,
 	})
 
-	return c.Send("🌍 Введите ваш часовой пояс в формате IANA (например, Europe/Moscow, America/New_York, Asia/Tokyo):")
+	return c.Send(tw.withGroupHint(c, texts.SetTimezonePrompt))
 }
 
 // HandleTimezoneText обрабатывает ввод пользователем часового пояса
@@ -56,14 +67,14 @@ func (tw *TimezoneWizard) HandleTimezoneText(c tele.Context, botName string) err
 		return c.Send(texts.UnknownTimezone)
 	}
 
-	// Проверяем, была ли у пользователя таймзона ранее
-	hadTimezone, err := tw.UserUsecase.HasTimezone(context.Background(), chatID, userID)
+	// В единой модели работаем с таймзоной чата
+	hadTimezone, err := tw.ChatUsecase.HasTimezone(context.Background(), chatID)
 	if err != nil {
 		slog.Error("Failed to check timezone", "user_id", userID, "chat_id", chatID, "error", err)
 		hadTimezone = false // считаем что таймзоны не было
 	}
 
-	err = tw.UserUsecase.SetTimezone(context.Background(), chatID, userID, tz)
+	err = tw.ChatUsecase.SetTimezone(context.Background(), chatID, tz)
 	if err != nil {
 		slog.Error("Failed to set custom timezone", "user_id", userID, "chat_id", chatID, "timezone", tz, "error", err)
 		return c.Send("Ошибка при установке часового пояса")
@@ -71,7 +82,7 @@ func (tw *TimezoneWizard) HandleTimezoneText(c tele.Context, botName string) err
 
 	tw.SessionManager.Delete(chatID, userID)
 
-	slog.Info("Custom timezone set", "user_id", userID, "chat_id", chatID, "timezone", tz)
+	slog.Info("Custom timezone set", "chat_id", chatID, "timezone", tz)
 
 	// Показываем сообщение об успешной установке
 	successMsg := "✅ Часовой пояс успешно установлен: " + tz

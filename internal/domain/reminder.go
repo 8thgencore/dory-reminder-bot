@@ -19,7 +19,6 @@ const (
 type Reminder struct {
 	ID          int64
 	ChatID      int64
-	UserID      int64
 	Text        string
 	NextTime    time.Time
 	Repeat      RepeatType

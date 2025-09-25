@@ -24,7 +24,6 @@ func setupTestDB(t *testing.T) *sql.DB {
 		CREATE TABLE reminders (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			chat_id INTEGER NOT NULL,
-			user_id INTEGER NOT NULL,
 			text TEXT NOT NULL,
 			next_time DATETIME NOT NULL,
 			repeat INTEGER NOT NULL,
@@ -45,7 +44,6 @@ func createTestReminder() *domain.Reminder {
 	now := time.Now()
 	return &domain.Reminder{
 		ChatID:      12345,
-		UserID:      67890,
 		Text:        "Test reminder",
 		NextTime:    now.Add(time.Hour),
 		Repeat:      domain.RepeatNone,
@@ -149,14 +147,7 @@ func TestReminderRepository_Create(t *testing.T) {
 		assert.Greater(t, rem.ID, int64(0))
 	})
 
-	t.Run("invalid user ID", func(t *testing.T) {
-		rem := createTestReminder()
-		rem.UserID = -1
-
-		err := repo.Create(context.Background(), rem)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid user ID")
-	})
+	// user validation removed in unified chat model
 }
 
 func TestReminderRepository_GetByID(t *testing.T) {
@@ -175,7 +166,7 @@ func TestReminderRepository_GetByID(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, rem.ID, retrieved.ID)
 		assert.Equal(t, rem.ChatID, retrieved.ChatID)
-		assert.Equal(t, rem.UserID, retrieved.UserID)
+		// UserID removed
 		assert.Equal(t, rem.Text, retrieved.Text)
 		assert.Equal(t, rem.RepeatDays, retrieved.RepeatDays)
 	})
@@ -617,21 +608,7 @@ func TestValidateReminder(t *testing.T) {
 		assert.NoError(t, err) // Отрицательные chatID валидны для групп
 	})
 
-	t.Run("invalid user ID", func(t *testing.T) {
-		rem := createTestReminder()
-		rem.UserID = 0
-		err := validateReminder(rem)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid user ID")
-	})
-
-	t.Run("negative user ID", func(t *testing.T) {
-		rem := createTestReminder()
-		rem.UserID = -1
-		err := validateReminder(rem)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid user ID")
-	})
+	// user ID validation removed
 }
 
 // Тест для проверки интеграции всех методов
@@ -644,7 +621,6 @@ func TestReminderRepository_Integration(t *testing.T) {
 	reminders := []*domain.Reminder{
 		{
 			ChatID:      123,
-			UserID:      456,
 			Text:        "First reminder",
 			NextTime:    time.Now().Add(time.Hour),
 			Repeat:      domain.RepeatEveryDay,
@@ -654,7 +630,6 @@ func TestReminderRepository_Integration(t *testing.T) {
 		},
 		{
 			ChatID:      123,
-			UserID:      456,
 			Text:        "Second reminder",
 			NextTime:    time.Now().Add(-time.Hour), // просроченное
 			Repeat:      domain.RepeatEveryWeek,
@@ -664,7 +639,6 @@ func TestReminderRepository_Integration(t *testing.T) {
 		},
 		{
 			ChatID:      789,
-			UserID:      101,
 			Text:        "Other chat reminder",
 			NextTime:    time.Now().Add(2 * time.Hour),
 			Repeat:      domain.RepeatNone,
@@ -845,7 +819,6 @@ func TestReminderRepository_GetByID_DatabaseErrors(t *testing.T) {
 		_, err = db.Exec(`CREATE TABLE reminders (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			chat_id INTEGER NOT NULL,
-			user_id INTEGER NOT NULL,
 			text TEXT NOT NULL,
 			next_time DATETIME NOT NULL,
 			repeat INTEGER NOT NULL,

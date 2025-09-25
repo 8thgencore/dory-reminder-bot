@@ -5,3 +5,13 @@ tasks:
     desc: Build application Docker image
     cmds:
       - docker buildx build --no-cache --platform linux/amd64 -t bot:latest .
+
+  up:
+    desc: Start the application container
+    cmds:
+      - docker compose up -d
+
+  down:
+    desc: Stop the application container
+    cmds:
+      - docker compose down
