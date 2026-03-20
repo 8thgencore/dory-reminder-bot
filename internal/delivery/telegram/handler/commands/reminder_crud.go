@@ -89,8 +89,8 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	page := 0
 	if cb := c.Callback(); cb != nil {
 		data := strings.TrimSpace(cb.Data)
-		if strings.HasPrefix(data, "rem_page_") {
-			if p, err := strconv.Atoi(strings.TrimPrefix(data, "rem_page_")); err == nil && p >= 0 {
+		if after, ok := strings.CutPrefix(data, "rem_page_"); ok {
+			if p, err := strconv.Atoi(after); err == nil && p >= 0 {
 				page = p
 			}
 		}

@@ -12,26 +12,26 @@ import (
 //go:generate mockgen -destination=db.go -package=mocks . DBExecutor
 
 type MockDB struct {
-	ExecContextFunc     func(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	QueryRowContextFunc func(ctx context.Context, query string, args ...interface{}) *sql.Row
-	QueryContextFunc    func(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	ExecContextFunc     func(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContextFunc func(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContextFunc    func(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
-func (m *MockDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (m *MockDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	if m.ExecContextFunc != nil {
 		return m.ExecContextFunc(ctx, query, args...)
 	}
 	return nil, nil
 }
 
-func (m *MockDB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+func (m *MockDB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	if m.QueryRowContextFunc != nil {
 		return m.QueryRowContextFunc(ctx, query, args...)
 	}
 	return nil
 }
 
-func (m *MockDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (m *MockDB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	if m.QueryContextFunc != nil {
 		return m.QueryContextFunc(ctx, query, args...)
 	}
@@ -63,10 +63,10 @@ func (m *MockResult) RowsAffected() (int64, error) {
 // mockRow - мок строки результата
 // Используется только в тестах
 type mockRow struct {
-	scanFunc func(dest ...interface{}) error
+	scanFunc func(dest ...any) error
 }
 
-func (m *mockRow) Scan(dest ...interface{}) error {
+func (m *mockRow) Scan(dest ...any) error {
 	if m.scanFunc != nil {
 		return m.scanFunc(dest...)
 	}
@@ -77,7 +77,7 @@ func (m *mockRow) Scan(dest ...interface{}) error {
 // Используется только в тестах
 type mockRows struct {
 	nextFunc  func() bool
-	scanFunc  func(dest ...interface{}) error
+	scanFunc  func(dest ...any) error
 	errFunc   func() error
 	closeFunc func() error
 }
@@ -89,7 +89,7 @@ func (m *mockRows) Next() bool {
 	return false
 }
 
-func (m *mockRows) Scan(dest ...interface{}) error {
+func (m *mockRows) Scan(dest ...any) error {
 	if m.scanFunc != nil {
 		return m.scanFunc(dest...)
 	}

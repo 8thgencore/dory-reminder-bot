@@ -72,7 +72,7 @@ func (m *mockContext) Text() string {
 	return m.text
 }
 
-func (m *mockContext) Send(msg interface{}, opts ...interface{}) error {
+func (m *mockContext) Send(msg any, opts ...any) error {
 	m.sendCalls = append(m.sendCalls, msg.(string))
 	return nil
 }

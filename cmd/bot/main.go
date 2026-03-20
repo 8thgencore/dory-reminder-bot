@@ -2,6 +2,8 @@ package main
 
 import (
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -40,9 +42,31 @@ func main() {
 	}
 
 	// Initialize bot
+	var client *http.Client
+
+	if cfg.ProxyURL != "" {
+		proxyURL, err := url.Parse(cfg.ProxyURL)
+		if err != nil {
+			log.Error("Invalid proxy URL", "error", err)
+			os.Exit(1)
+		}
+
+		client = &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyURL(proxyURL),
+			},
+			Timeout: 10 * time.Second,
+		}
+	} else {
+		client = &http.Client{
+			Timeout: 10 * time.Second,
+		}
+	}
+
 	pref := tele.Settings{
 		Token:  cfg.Telegram.Token,
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+		Client: client,
 	}
 
 	bot, err := tele.NewBot(pref)

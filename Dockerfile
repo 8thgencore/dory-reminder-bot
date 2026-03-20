@@ -1,5 +1,5 @@
 # Use the official Golang image as the base for building the application
-FROM golang:1.24.5-alpine3.21 AS builder
+FROM golang:1.26.1-alpine3.22 AS builder
 
 # Update and upgrade the Alpine packages, install build dependencies for CGO
 RUN apk update && apk upgrade --available && \
@@ -34,7 +34,7 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o ./bin/main cmd/bot/main.go
 # 2 stage #
 ###########
 # Use a minimal base image to run the application
-FROM golang:1.24.5-alpine3.21
+FROM golang:1.26.1-alpine3.22
 
 # Install runtime dependencies for SQLite
 RUN apk add --no-cache sqlite

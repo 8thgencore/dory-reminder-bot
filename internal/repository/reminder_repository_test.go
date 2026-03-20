@@ -705,7 +705,7 @@ func TestReminderRepository_Integration(t *testing.T) {
 func TestReminderRepository_Create_DatabaseErrors(t *testing.T) {
 	t.Run("exec context error", func(t *testing.T) {
 		mock := &mocks.MockDB{
-			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+			ExecContextFunc: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
@@ -720,7 +720,7 @@ func TestReminderRepository_Create_DatabaseErrors(t *testing.T) {
 
 	t.Run("last insert ID error", func(t *testing.T) {
 		mock := &mocks.MockDB{
-			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+			ExecContextFunc: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
 				return &mocks.MockResult{
 					LastInsertIDFunc: func() (int64, error) {
 						return 0, errors.New("failed to get last insert ID")
@@ -741,7 +741,7 @@ func TestReminderRepository_Create_DatabaseErrors(t *testing.T) {
 func TestReminderRepository_Update_DatabaseErrors(t *testing.T) {
 	t.Run("exec context error", func(t *testing.T) {
 		mock := &mocks.MockDB{
-			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+			ExecContextFunc: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
@@ -757,7 +757,7 @@ func TestReminderRepository_Update_DatabaseErrors(t *testing.T) {
 
 	t.Run("rows affected error", func(t *testing.T) {
 		mock := &mocks.MockDB{
-			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+			ExecContextFunc: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
 				return &mocks.MockResult{
 					RowsAffectedFunc: func() (int64, error) {
 						return 0, errors.New("failed to get rows affected")
@@ -779,7 +779,7 @@ func TestReminderRepository_Update_DatabaseErrors(t *testing.T) {
 func TestReminderRepository_Delete_DatabaseErrors(t *testing.T) {
 	t.Run("exec context error", func(t *testing.T) {
 		mock := &mocks.MockDB{
-			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+			ExecContextFunc: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
@@ -793,7 +793,7 @@ func TestReminderRepository_Delete_DatabaseErrors(t *testing.T) {
 
 	t.Run("rows affected error", func(t *testing.T) {
 		mock := &mocks.MockDB{
-			ExecContextFunc: func(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+			ExecContextFunc: func(ctx context.Context, query string, args ...any) (sql.Result, error) {
 				return &mocks.MockResult{
 					RowsAffectedFunc: func() (int64, error) {
 						return 0, errors.New("failed to get rows affected")
@@ -840,7 +840,7 @@ func TestReminderRepository_GetByID_DatabaseErrors(t *testing.T) {
 func TestReminderRepository_ListByChat_DatabaseErrors(t *testing.T) {
 	t.Run("query context error", func(t *testing.T) {
 		mock := &mocks.MockDB{
-			QueryContextFunc: func(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+			QueryContextFunc: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}
@@ -856,7 +856,7 @@ func TestReminderRepository_ListByChat_DatabaseErrors(t *testing.T) {
 func TestReminderRepository_ListDue_DatabaseErrors(t *testing.T) {
 	t.Run("query context error", func(t *testing.T) {
 		mock := &mocks.MockDB{
-			QueryContextFunc: func(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+			QueryContextFunc: func(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 				return nil, errors.New("database connection failed")
 			},
 		}

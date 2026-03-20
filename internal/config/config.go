@@ -21,6 +21,7 @@ const (
 type Config struct {
 	Env      Env `env:"ENV" env-default:"dev"`
 	Telegram TelegramConfig
+	ProxyURL string `env:"PROXY_URL" env-required:"false"`
 }
 
 // TelegramConfig is the configuration for the engine
