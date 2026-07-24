@@ -59,10 +59,10 @@ func (rc *ReminderCRUD) OnAdd(c tele.Context) error {
 		return c.Send(texts.ErrCheckSettings)
 	}
 	if !hasTZ {
-		return c.Send("⚠️ Сначала установите часовой пояс командой /timezone")
+		return c.Send(texts.TimezoneRequired)
 	}
 	if c.Message().Payload != "" {
-		return c.Send("Для создания напоминания используйте мастер через /add без параметров.")
+		return c.Send(texts.AddViaWizardOnly)
 	}
 
 	return c.Send(texts.HelpAdd, &tele.SendOptions{ParseMode: tele.ModeMarkdown}, ui.GetAddMenu())
@@ -101,31 +101,28 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 		end = len(reminders)
 	}
 
+	// Сообщение уходит в режиме MarkdownV2, поэтому экранировать нужно всё
+	// подставляемое — не только текст пользователя, но и даты с описанием повтора:
+	// точки, скобки и дефисы в них тоже спецсимволы.
 	var builder strings.Builder
-	builder.WriteString("📋 *Ваши напоминания*\n\n")
+	builder.WriteString(texts.RemindersHeader + "\n\n")
 
-	// Добавляем информацию о часовом поясе чата
 	if ch, err := rc.ChatUsecase.Get(context.Background(), c.Chat().ID); err == nil && ch != nil && ch.Timezone != "" {
-		builder.WriteString(fmt.Sprintf("🕐 *Часовой пояс:* %s\n\n", ch.Timezone))
+		builder.WriteString(fmt.Sprintf("🕐 *Часовой пояс:* %s\n\n", ui.EscapeMarkdownV2(ch.Timezone)))
 	}
 
 	for i := start; i < end; i++ {
 		r := reminders[i]
 
-		// Статус с понятными эмодзи
 		status := ui.FormatStatus(r.Paused)
+		timeStr := ui.EscapeMarkdownV2(ui.FormatTime(r.NextTime, loc))
+		repeatStr := ui.EscapeMarkdownV2(ui.FormatRepeat(r))
 
-		// Форматируем время в часовом поясе пользователя
-		timeStr := ui.FormatTime(r.NextTime, loc)
-
-		// Форматируем повтор с дополнительной информацией
-		repeatStr := ui.FormatRepeatWithDetails(r, loc)
-
-		builder.WriteString(fmt.Sprintf("*%d.* %s\n", i+1, ui.EscapeMarkdown(r.Text)))
+		builder.WriteString(fmt.Sprintf("*%d\\.* %s\n", i+1, ui.EscapeMarkdownV2(r.Text)))
 
 		// Отображаем статус только если напоминание приостановлено
 		if status != "" {
-			builder.WriteString(fmt.Sprintf("   %s | 📅 %s\n", status, timeStr))
+			builder.WriteString(fmt.Sprintf("   %s \\| 📅 %s\n", ui.EscapeMarkdownV2(status), timeStr))
 		} else {
 			builder.WriteString(fmt.Sprintf("   📅 %s\n", timeStr))
 		}
@@ -145,7 +142,7 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 		rows = append(rows, nav.Row(nav.Data("Далее ➡", "rem_page_"+strconv.Itoa(page+1))))
 	}
 
-	options := &tele.SendOptions{ParseMode: tele.ModeMarkdown}
+	options := &tele.SendOptions{ParseMode: tele.ModeMarkdownV2}
 
 	if len(rows) > 0 {
 		nav.Inline(rows...)
@@ -166,20 +163,20 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 func (rc *ReminderCRUD) OnEdit(c tele.Context) error {
 	args := strings.Fields(strings.TrimSpace(c.Message().Payload))
 	if len(args) < 2 {
-		return c.Send("Формат: /edit <номер> <новый текст> или /edit <номер> <время> <новый текст>")
+		return c.Send(texts.EditUsage)
 	}
 
 	num, err := getReminderNumber(args[0])
 	if err != nil {
-		return c.Send("Ошибка: укажите корректный номер напоминания из списка")
+		return c.Send(texts.ErrWrongNumber)
 	}
 
 	reminders, err := rc.getReminders(c.Chat().ID)
 	if err != nil {
-		return c.Send("Ошибка при получении списка напоминаний")
+		return c.Send(texts.ErrGetReminders)
 	}
 	if num > len(reminders) {
-		return c.Send("Нет напоминания с таким номером")
+		return c.Send(texts.ErrNoSuchReminder)
 	}
 
 	rem := reminders[num-1]
@@ -196,7 +193,7 @@ func (rc *ReminderCRUD) OnEdit(c tele.Context) error {
 
 	if newTime != "" {
 		if !validator.IsTime(newTime) {
-			return c.Send("Время должно быть в формате 15:00")
+			return c.Send(texts.EditTimeFormat)
 		}
 		rem.NextTime = validator.NextTimeFromString(newTime, rem.NextTime)
 	}
@@ -204,58 +201,59 @@ func (rc *ReminderCRUD) OnEdit(c tele.Context) error {
 		rem.Text = newText
 	}
 
-	err = rc.Usecase.EditReminder(context.Background(), rem)
-	if err != nil {
-		return c.Send("Ошибка при обновлении напоминания")
+	if err := rc.Usecase.EditReminder(context.Background(), rem); err != nil {
+		return c.Send(texts.ErrUpdateReminder)
 	}
 
-	return c.Send("Напоминание обновлено!")
+	return c.Send(texts.ReminderUpdated)
 }
 
-// handleReminderAction - общий шаблон для удаления, паузы, возобновления
-func (rc *ReminderCRUD) handleReminderAction(c tele.Context, action string, do func(remID int64) error) error {
-	arg := strings.TrimSpace(c.Message().Payload)
-	num, err := getReminderNumber(arg)
+// handleReminderAction — общий шаблон для удаления, паузы и возобновления.
+//
+// Номер приходит из вывода /list, поэтому список запрашивается тем же запросом
+// с той же сортировкой: иначе номер указал бы на другое напоминание.
+func (rc *ReminderCRUD) handleReminderAction(
+	c tele.Context,
+	errMsg, successMsg string,
+	do func(remID int64) error,
+) error {
+	num, err := getReminderNumber(strings.TrimSpace(c.Message().Payload))
 	if err != nil {
-		return c.Send("Ошибка: укажите корректный номер напоминания из списка")
+		return c.Send(texts.ErrWrongNumber)
 	}
 
 	reminders, err := rc.getReminders(c.Chat().ID)
 	if err != nil {
-		return c.Send("Ошибка при получении списка напоминаний")
+		return c.Send(texts.ErrGetReminders)
 	}
 	if num > len(reminders) {
-		return c.Send("Нет напоминания с таким номером")
+		return c.Send(texts.ErrNoSuchReminder)
 	}
 
-	rem := reminders[num-1]
-	if err := do(rem.ID); err != nil {
-		return c.Send(fmt.Sprintf("Ошибка при %s напоминания", action))
+	if err := do(reminders[num-1].ID); err != nil {
+		return c.Send(errMsg)
 	}
 
-	actionEmojis := map[string]string{"delete": "🗑️", "pause": "⏸️", "resume": "▶️"}
-	actionTexts := map[string]string{"delete": "удалено", "pause": "поставлено на паузу", "resume": "возобновлено"}
-
-	return c.Send(fmt.Sprintf("%s Напоминание %s!", actionEmojis[action], actionTexts[action]))
+	return c.Send(successMsg)
 }
 
 // OnDelete обрабатывает команду /delete
 func (rc *ReminderCRUD) OnDelete(c tele.Context) error {
-	return rc.handleReminderAction(c, "delete", func(remID int64) error {
+	return rc.handleReminderAction(c, texts.ErrDeleteReminder, texts.ReminderDeleted, func(remID int64) error {
 		return rc.Usecase.DeleteReminder(context.Background(), remID)
 	})
 }
 
 // OnPause обрабатывает команду /pause
 func (rc *ReminderCRUD) OnPause(c tele.Context) error {
-	return rc.handleReminderAction(c, "pause", func(remID int64) error {
+	return rc.handleReminderAction(c, texts.ErrPauseReminder, texts.ReminderPaused, func(remID int64) error {
 		return rc.Usecase.PauseReminder(context.Background(), remID)
 	})
 }
 
 // OnResume обрабатывает команду /resume
 func (rc *ReminderCRUD) OnResume(c tele.Context) error {
-	return rc.handleReminderAction(c, "resume", func(remID int64) error {
+	return rc.handleReminderAction(c, texts.ErrResumeReminder, texts.ReminderResumed, func(remID int64) error {
 		return rc.Usecase.ResumeReminder(context.Background(), remID)
 	})
 }

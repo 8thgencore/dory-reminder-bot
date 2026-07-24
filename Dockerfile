@@ -22,7 +22,8 @@ COPY go.mod go.sum ./
 # Download the Go module dependencies and verify them
 RUN go mod download && go mod verify
 
-# Copy the entire application code into the working directory
+# Copy the entire application code into the working directory.
+# internal/ also carries the embedded Mini App assets (internal/delivery/webapp/web).
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY pkg/ ./pkg/
@@ -33,11 +34,12 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o ./bin/main cmd/bot/main.go
 ###########
 # 2 stage #
 ###########
-# Use a minimal base image to run the application
-FROM golang:1.26.1-alpine3.22
+# Minimal runtime image: the Go toolchain is not needed to run the binary.
+FROM alpine:3.22
 
-# Install runtime dependencies for SQLite
-RUN apk add --no-cache sqlite
+# tzdata backs time.LoadLocation for per-chat timezones; ca-certificates is required
+# for HTTPS calls to the Telegram Bot API.
+RUN apk add --no-cache tzdata ca-certificates
 
 # Set the working directory in the new image
 WORKDIR /opt/app/
@@ -55,6 +57,9 @@ RUN mkdir -p data && chown bot:bot data
 
 # Set the user and group for running the application
 USER bot:bot
+
+# Mini App HTTP server (WEBAPP_ENABLED=true). TLS is terminated by a reverse proxy.
+EXPOSE 8080
 
 # Command to run the application with the specified configuration file
 ENTRYPOINT ["./main"]

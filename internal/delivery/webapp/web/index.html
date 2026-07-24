@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Напоминания</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div id="app" hidden>
+    <header class="topbar">
+      <label class="chat-picker" id="chat-picker" hidden>
+        <span class="chat-picker__label">Чат</span>
+        <select id="chat-select"></select>
+      </label>
+      <button type="button" class="icon-button" id="settings-button" title="Настройки" aria-label="Настройки">⚙️</button>
+    </header>
+
+    <main>
+      <!-- Список напоминаний -->
+      <section id="view-list" class="view">
+        <p class="hint" id="tz-hint" hidden></p>
+        <ul class="reminders" id="reminders"></ul>
+        <p class="empty" id="empty-state" hidden>
+          Пока ничего не запланировано.<br>Нажмите кнопку внизу, чтобы добавить напоминание.
+        </p>
+      </section>
+
+      <!-- Создание и редактирование -->
+      <section id="view-form" class="view" hidden>
+        <form id="reminder-form" novalidate>
+          <label class="field">
+            <span class="field__label">Текст напоминания</span>
+            <textarea id="field-text" rows="3" maxlength="500" required
+                      placeholder="Например: позвонить в клинику"></textarea>
+            <span class="field__counter"><span id="text-counter">0</span>/500</span>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Повтор</span>
+            <select id="field-repeat">
+              <option value="none">Один раз</option>
+              <option value="daily">Каждый день</option>
+              <option value="weekly">По дням недели</option>
+              <option value="monthly">Раз в месяц</option>
+              <option value="every_n_days">Каждые N дней</option>
+              <option value="yearly">Раз в год</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Время</span>
+            <input type="time" id="field-time" required>
+          </label>
+
+          <div class="field" id="field-weekdays-wrap" hidden>
+            <span class="field__label">Дни недели</span>
+            <div class="weekdays" id="field-weekdays"></div>
+          </div>
+
+          <label class="field" id="field-monthday-wrap" hidden>
+            <span class="field__label">Число месяца</span>
+            <input type="number" id="field-monthday" min="1" max="31" inputmode="numeric">
+          </label>
+
+          <label class="field" id="field-every-wrap" hidden>
+            <span class="field__label">Повторять каждые (дней)</span>
+            <input type="number" id="field-every" min="1" max="365" inputmode="numeric">
+          </label>
+
+          <label class="field" id="field-date-wrap" hidden>
+            <span class="field__label" id="field-date-label">Дата</span>
+            <input type="date" id="field-date">
+          </label>
+
+          <p class="error" id="form-error" hidden></p>
+        </form>
+      </section>
+
+      <!-- Настройки чата -->
+      <section id="view-settings" class="view" hidden>
+        <label class="field">
+          <span class="field__label">Часовой пояс</span>
+          <select id="field-timezone"></select>
+          <span class="field__hint" id="tz-detected" hidden></span>
+        </label>
+        <p class="hint">
+          Часовой пояс определяет, в какое время придут напоминания этого чата.
+        </p>
+        <p class="error" id="settings-error" hidden></p>
+      </section>
+    </main>
+  </div>
+
+  <div id="splash" class="splash">
+    <p id="splash-text">Загрузка…</p>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

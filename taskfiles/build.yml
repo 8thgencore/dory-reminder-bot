@@ -4,4 +4,6 @@ tasks:
   bot:
     desc: Build the bot application
     cmds:
-      - go build -o ./bin/bot cmd/bot/main.go
+      # CGO is required by go-sqlite3. It is on by default, but pinning it here keeps
+      # the build from silently breaking under CGO_ENABLED=0.
+      - CGO_ENABLED=1 go build -o ./bin/bot ./cmd/bot

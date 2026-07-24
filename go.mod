@@ -3,11 +3,11 @@ module github.com/8thgencore/dory-reminder-bot
 go 1.26.1
 
 require (
-	github.com/golang-cz/devslog v0.0.15
+	github.com/golang-cz/devslog v0.0.17
 	github.com/ilyakaznacheev/cleanenv v1.5.0
-	github.com/mattn/go-sqlite3 v1.14.37
+	github.com/mattn/go-sqlite3 v1.14.48
 	github.com/stretchr/testify v1.11.1
-	gopkg.in/telebot.v4 v4.0.0-beta.7
+	gopkg.in/telebot.v4 v4.0.0-beta.10
 )
 
 require (

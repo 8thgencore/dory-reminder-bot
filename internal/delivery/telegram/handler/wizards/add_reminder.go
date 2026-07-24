@@ -2,16 +2,17 @@ package wizards
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
-	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/timecalc"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/ui"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
+	"github.com/8thgencore/dory-reminder-bot/internal/scheduling"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	"github.com/8thgencore/dory-reminder-bot/pkg/validator"
 	tele "gopkg.in/telebot.v4"
@@ -33,7 +34,7 @@ const (
 type AddReminderWizard struct {
 	ReminderUsecase usecase.ReminderUsecase
 	SessionManager  *session.Manager
-	TimeCalculator  *timecalc.TimeCalculator
+	TimeCalculator  *scheduling.TimeCalculator
 	ChatUsecase     usecase.ChatUsecase
 	BotName         string
 }
@@ -48,7 +49,7 @@ func NewAddReminderWizard(
 	return &AddReminderWizard{
 		ReminderUsecase: reminderUc,
 		SessionManager:  sessionMgr,
-		TimeCalculator:  timecalc.NewTimeCalculator(),
+		TimeCalculator:  scheduling.NewTimeCalculator(),
 		ChatUsecase:     chatUc,
 		BotName:         botName,
 	}
@@ -75,13 +76,6 @@ func getAddReminderMessage(typ string) string {
 	default:
 		return texts.PromptUnknown
 	}
-}
-
-func (w *AddReminderWizard) withGroupHint(c tele.Context, msg string) string {
-	if c.Chat().Type != "private" && msg != texts.PromptUnknown {
-		return msg + "\n\nЧтобы бот увидел ваш ответ, добавьте в конце @" + w.BotName
-	}
-	return msg
 }
 
 func (w *AddReminderWizard) getSession(chatID, userID int64) *session.AddReminderSession {
@@ -116,29 +110,29 @@ func (w *AddReminderWizard) HandleAddTypeCallback(c tele.Context, typ string) er
 	if typ == ReminderTypeMonth {
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
-		return c.Send(w.withGroupHint(c, texts.ValidateEnterMonth))
+		return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterMonth))
 	}
 	if typ == ReminderTypeYear {
 		sess.Step = session.StepInterval
 		w.updateSession(sess)
-		return c.Send(w.withGroupHint(c, texts.ValidateEnterDateDDMM))
+		return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterDateDDMM))
 	}
 	if typ == ReminderTypeNDays {
 		sess.Step = session.StepDate
 		w.updateSession(sess)
-		return c.Send(w.withGroupHint(c, texts.ValidateEnterDate))
+		return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterDate))
 	}
 	if typ == ReminderTypeDate {
 		sess.Step = session.StepDate
 		w.updateSession(sess)
-		return c.Send(w.withGroupHint(c, texts.ValidateEnterDateDDMMYYYY))
+		return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterDateDDMMYYYY))
 	}
 
 	sess.Step = session.StepTime
 	w.updateSession(sess)
 	msg := getAddReminderMessage(typ)
 
-	return c.Send(w.withGroupHint(c, msg))
+	return c.Send(withGroupHint(c, w.BotName, msg))
 }
 
 // HandleAddWizardText обрабатывает текстовые шаги мастера добавления напоминания
@@ -156,17 +150,15 @@ func (w *AddReminderWizard) HandleAddWizardText(c tele.Context, botName string) 
 	text = strings.ReplaceAll(text, "@"+botName, "")
 	text = strings.TrimSpace(text)
 
-	slog.Info(
+	// Текст сообщения — это содержимое напоминания пользователя, поэтому в журнал
+	// он не попадает; для диагностики хватает шага мастера.
+	slog.Debug(
 		"[HandleAddWizardText] called",
 		"chatID", chatID,
 		"userID", userID,
 		"chatType", c.Chat().Type,
 		"step", sess.Step,
 		"type", sess.Type,
-		"text", text,
-		"originalText", c.Text(),
-		"isReply", c.Message().ReplyTo != nil,
-		"isMention", strings.Contains(c.Text(), "@"+botName),
 	)
 
 	switch sess.Step {
@@ -190,7 +182,7 @@ func (w *AddReminderWizard) handleStepTimeWithText(c tele.Context, sess *session
 	text string,
 ) error {
 	if !validator.IsTime(text) {
-		return c.Send(w.withGroupHint(c, texts.ValidateEnterTime))
+		return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterTime))
 	}
 	sess.Time = text
 	sess.Step = session.StepText
@@ -202,61 +194,61 @@ func (w *AddReminderWizard) handleStepTimeWithText(c tele.Context, sess *session
 func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *session.AddReminderSession,
 	text string,
 ) error {
-	slog.Info("[handleStepInterval]", "type", sess.Type, "val", text, "date", sess.Date, "interval", sess.Interval)
+	slog.Debug("[handleStepInterval]", "type", sess.Type, "date", sess.Date, "interval", sess.Interval)
 
 	switch sess.Type {
 	case ReminderTypeWeek:
 		weekday, ok := parseWeekday(text)
 		if !ok {
-			return c.Send(w.withGroupHint(c, texts.ValidateEnterWeekday))
+			return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterWeekday))
 		}
 		sess.Interval = weekday
 		sess.Step = session.StepTime
 		w.updateSession(sess)
-		slog.Info("[handleStepInterval]", "set_weekday", weekday, "next_step", "StepTime")
+		slog.Debug("[handleStepInterval]", "set_weekday", weekday, "next_step", "StepTime")
 		if err := c.Respond(); err != nil {
 			slog.Error("c.Respond error", "err", err)
 		}
 
-		return c.Send(w.withGroupHint(c, texts.PromptEveryDay))
+		return c.Send(withGroupHint(c, w.BotName, texts.PromptEveryDay))
 	case ReminderTypeMonth:
-		if !validator.IsInterval(text) {
-			return c.Send(w.withGroupHint(c, texts.ValidateEnterMonth))
+		if !validator.IsDayOfMonth(text) {
+			return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterMonth))
 		}
 		n, _ := strconv.Atoi(text)
 		sess.Interval = n
 		sess.Step = session.StepTime
 		w.updateSession(sess)
-		slog.Info("[handleStepInterval]", "set_month", n, "next_step", "StepTime")
+		slog.Debug("[handleStepInterval]", "set_month", n, "next_step", "StepTime")
 		if err := c.Respond(); err != nil {
 			slog.Error("c.Respond error", "err", err)
 		}
 
-		return c.Send(w.withGroupHint(c, texts.PromptEveryDay))
+		return c.Send(withGroupHint(c, w.BotName, texts.PromptEveryDay))
 	case ReminderTypeYear:
 		if !validator.IsDateDDMM(text) {
-			return c.Send(w.withGroupHint(c, texts.ValidateEnterDateDDMM))
+			return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterDateDDMM))
 		}
 		sess.Date = text
 		sess.Step = session.StepTime
 		w.updateSession(sess)
-		slog.Info("[handleStepInterval]", "set_year_date", text, "next_step", "StepTime")
+		slog.Debug("[handleStepInterval]", "set_year_date", text, "next_step", "StepTime")
 		if err := c.Respond(); err != nil {
 			slog.Error("c.Respond error", "err", err)
 		}
 
-		return c.Send(w.withGroupHint(c, texts.PromptEveryDay))
+		return c.Send(withGroupHint(c, w.BotName, texts.PromptEveryDay))
 	case ReminderTypeNDays:
 		if !validator.IsInterval(text) {
-			return c.Send(w.withGroupHint(c, texts.ValidateEnterInterval))
+			return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterInterval))
 		}
 		n, _ := strconv.Atoi(text)
 		sess.Interval = n
 		sess.Step = session.StepTime
 		w.updateSession(sess)
-		slog.Info("[handleStepInterval]", "set_ndays_interval", n, "next_step", "StepTime")
+		slog.Debug("[handleStepInterval]", "set_ndays_interval", n, "next_step", "StepTime")
 
-		return c.Send(w.withGroupHint(c, texts.PromptEveryDay))
+		return c.Send(withGroupHint(c, w.BotName, texts.PromptEveryDay))
 	}
 
 	return nil
@@ -265,17 +257,17 @@ func (w *AddReminderWizard) handleStepIntervalWithText(c tele.Context, sess *ses
 func (w *AddReminderWizard) handleStepTextWithText(c tele.Context, sess *session.AddReminderSession,
 	text string,
 ) error {
-	slog.Info("[handleStepTextWithText] called", "text", text, "chatID", sess.ChatID, "userID", sess.UserID)
+	slog.Debug("[handleStepTextWithText] called", "chatID", sess.ChatID, "userID", sess.UserID)
 
 	if !validator.IsNotEmpty(text) {
-		slog.Warn("[handleStepTextWithText] empty text", "text", text)
-		return c.Send(w.withGroupHint(c, texts.ValidateEnterText))
+		slog.Debug("[handleStepTextWithText] empty text", "chatID", sess.ChatID)
+		return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterText))
 	}
 	sess.Text = text
 	sess.Step = session.StepConfirm
 	w.updateSession(sess)
 
-	slog.Info("[handleStepTextWithText] text set, moving to confirm", "text", text, "step", sess.Step)
+	slog.Debug("[handleStepTextWithText] text set, moving to confirm", "step", sess.Step)
 
 	return w.handleStepConfirm(c, sess)
 }
@@ -283,13 +275,13 @@ func (w *AddReminderWizard) handleStepTextWithText(c tele.Context, sess *session
 func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session.AddReminderSession,
 	text string,
 ) error {
-	slog.Info("[handleStepDate] called", "type", sess.Type, "val", text, "date", sess.Date, "interval", sess.Interval)
+	slog.Debug("[handleStepDate] called", "type", sess.Type, "date", sess.Date, "interval", sess.Interval)
 
 	if sess.Type == ReminderTypeNDays {
 		if sess.Date != "" && sess.Interval == 0 {
 			if !validator.IsInterval(text) {
 				slog.Warn("[handleStepDate] NDays: invalid interval", "val", text)
-				return c.Send(w.withGroupHint(c, texts.ValidateEnterInterval))
+				return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterInterval))
 			}
 			n, _ := strconv.Atoi(text)
 			sess.Interval = n
@@ -301,7 +293,7 @@ func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session
 		}
 		if !validator.IsDateDDMMYYYY(text) {
 			slog.Warn("[handleStepDate] NDays: invalid date", "val", text)
-			return c.Send(w.withGroupHint(c, texts.ValidateEnterDate))
+			return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterDate))
 		}
 		sess.Date = text
 		sess.Step = session.StepInterval
@@ -316,7 +308,7 @@ func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session
 		parts := strings.Fields(text)
 		if len(parts) != 2 || !validator.IsDateDDMMYYYY(parts[0]) || !validator.IsTime(parts[1]) {
 			slog.Warn("[handleStepDate] Date: invalid date/time", "val", text)
-			return c.Send(w.withGroupHint(c, texts.ValidateEnterDateDDMMYYYY))
+			return c.Send(withGroupHint(c, w.BotName, texts.ValidateEnterDateDDMMYYYY))
 		}
 		sess.Date = parts[0]
 		sess.Time = parts[1]
@@ -333,36 +325,28 @@ func (w *AddReminderWizard) handleStepDateWithText(c tele.Context, sess *session
 }
 
 func (w *AddReminderWizard) handleStepConfirm(c tele.Context, sess *session.AddReminderSession) error {
-	slog.Info("[handleStepConfirm] called", "session", sess)
+	slog.Debug("[handleStepConfirm] called", "chatID", sess.ChatID, "type", sess.Type)
 
 	err := w.createReminderFromSession(sess)
 	w.SessionManager.Delete(sess.ChatID, sess.UserID)
 	if err != nil {
-		slog.Error("[handleStepConfirm] failed to create reminder", "error", err, "session", sess)
+		slog.Error("[handleStepConfirm] failed to create reminder", "error", err, "chatID", sess.ChatID)
 		return c.Send(texts.ErrCreateReminder)
 	}
 
-	slog.Info("[handleStepConfirm] reminder created successfully")
+	slog.Debug("[handleStepConfirm] reminder created successfully")
 
-	return c.Send("Напоминание создано!")
+	return c.Send(texts.ReminderCreated)
 }
 
 func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderSession) error {
+	ctx := context.Background()
 	now := time.Now()
-	var nextTime time.Time
 
-	slog.Info("[createReminderFromSession] before calculation", "type", sess.Type, "date", sess.Date,
-		"time", sess.Time, "interval", sess.Interval, "chatID", sess.ChatID, "userID", sess.UserID)
+	slog.Debug("[createReminderFromSession] before calculation", "type", sess.Type, "date", sess.Date,
+		"time", sess.Time, "interval", sess.Interval, "chatID", sess.ChatID)
 
-	loc := time.Local
-	if ch, err := w.ChatUsecase.Get(context.Background(), sess.ChatID); err == nil && ch != nil && ch.Timezone != "" {
-		if l, err := time.LoadLocation(ch.Timezone); err == nil {
-			loc = l
-			slog.Info("[createReminderFromSession] using chat timezone", "timezone", ch.Timezone)
-		} else {
-			slog.Warn("[createReminderFromSession] failed to load chat timezone", "timezone", ch.Timezone, "error", err)
-		}
-	}
+	loc := w.ChatUsecase.Location(ctx, sess.ChatID)
 
 	t, err := time.ParseInLocation("15:04", sess.Time, loc)
 	if err != nil {
@@ -370,73 +354,58 @@ func (w *AddReminderWizard) createReminderFromSession(sess *session.AddReminderS
 		return err
 	}
 
-	switch sess.Type {
-	case ReminderTypeToday:
-		nextTime = w.TimeCalculator.GetNextTimeToday(now.In(loc), t)
-	case ReminderTypeTomorrow:
-		nextTime = w.TimeCalculator.GetNextTimeTomorrow(now.In(loc), t)
-	case ReminderTypeEveryDay:
-		nextTime = w.TimeCalculator.GetNextTimeEveryDay(now.In(loc), t)
-	case ReminderTypeWeek:
-		nextTime = w.TimeCalculator.GetNextTimeWeek(now.In(loc), t, sess.Interval)
-	case ReminderTypeMonth:
-		nextTime = w.TimeCalculator.GetNextTimeMonth(now.In(loc), t, sess.Interval)
-	case ReminderTypeYear:
-		nextTime = w.TimeCalculator.GetNextTimeYear(now.In(loc), t, sess.Date)
-	case ReminderTypeDate:
-		nextTime = w.TimeCalculator.GetNextTimeDate(t, sess.Date, loc)
-	case ReminderTypeNDays:
-		startTime, err := time.ParseInLocation("02.01.2006", sess.Date, loc)
-		if err != nil {
-			slog.Warn("[createReminderFromSession] failed to parse date", "sess.Date", sess.Date, "err", err)
-			return err
-		}
-		nextTime = w.TimeCalculator.GetNextTimeNDays(startTime, t, sess.Interval)
-	}
-
-	slog.Info("[createReminderFromSession] calculated nextTime", "nextTime", nextTime, "sess.Date", sess.Date,
-		"sess.Time", sess.Time)
-
-	rem := convertSessionToReminderWithTZ(sess, nextTime)
-
-	// Для week/month/year/date сохраняем доп. параметры
-	switch sess.Type {
-	case ReminderTypeWeek:
-		rem.Repeat = domain.RepeatEveryWeek
-		rem.RepeatDays = []int{sess.Interval}
-	case ReminderTypeMonth:
-		rem.Repeat = domain.RepeatEveryMonth
-		rem.RepeatDays = []int{sess.Interval}
-	case ReminderTypeYear:
-		rem.Repeat = domain.RepeatEveryYear
-	case ReminderTypeDate:
-		rem.Repeat = domain.RepeatNone
-	case ReminderTypeNDays:
-		rem.Repeat = domain.RepeatEveryNDays
-		rem.RepeatEvery = sess.Interval
-	}
-
-	slog.Info("[createReminderFromSession] final reminder", "reminder", rem)
-
-	err = w.ReminderUsecase.AddReminder(context.Background(), rem)
+	nextTime, err := w.calcNextTime(sess, now.In(loc), t, loc)
 	if err != nil {
-		slog.Error("[createReminderFromSession] failed to add reminder", "error", err, "reminder", rem)
+		slog.Warn("[createReminderFromSession] failed to calculate next time", "type", sess.Type, "err", err)
 		return err
 	}
 
-	slog.Info("[createReminderFromSession] reminder created successfully", "reminderID", rem.ID)
+	rem := convertSessionToReminder(sess, nextTime)
+
+	slog.Debug("[createReminderFromSession] final reminder",
+		"chatID", rem.ChatID, "nextTime", rem.NextTime, "repeat", rem.Repeat)
+
+	if err := w.ReminderUsecase.AddReminder(ctx, rem); err != nil {
+		slog.Error("[createReminderFromSession] failed to add reminder", "error", err, "chatID", rem.ChatID)
+		return err
+	}
+
+	slog.Info("[createReminderFromSession] reminder created", "reminderID", rem.ID, "chatID", rem.ChatID)
 
 	return nil
 }
 
-// typeToRepeat converts a string reminder type to a domain RepeatType
-func typeToRepeat(typ string) domain.RepeatType {
-	switch typ {
+// calcNextTime вычисляет первое срабатывание для выбранного пользователем типа напоминания.
+func (w *AddReminderWizard) calcNextTime(
+	sess *session.AddReminderSession,
+	now, t time.Time,
+	loc *time.Location,
+) (time.Time, error) {
+	switch sess.Type {
+	case ReminderTypeToday:
+		return w.TimeCalculator.GetNextTimeToday(now, t), nil
+	case ReminderTypeTomorrow:
+		return w.TimeCalculator.GetNextTimeTomorrow(now, t), nil
 	case ReminderTypeEveryDay:
-		return domain.RepeatEveryDay
-	default:
-		return domain.RepeatNone
+		return w.TimeCalculator.GetNextTimeEveryDay(now, t), nil
+	case ReminderTypeWeek:
+		return w.TimeCalculator.GetNextTimeWeek(now, t, sess.Interval)
+	case ReminderTypeMonth:
+		return w.TimeCalculator.GetNextTimeMonth(now, t, sess.Interval)
+	case ReminderTypeYear:
+		return w.TimeCalculator.GetNextTimeYear(now, t, sess.Date)
+	case ReminderTypeDate:
+		return w.TimeCalculator.GetNextTimeDate(t, sess.Date, loc)
+	case ReminderTypeNDays:
+		startTime, err := validator.ParseDateDDMMYYYY(sess.Date, loc)
+		if err != nil {
+			return time.Time{}, err
+		}
+
+		return w.TimeCalculator.GetNextTimeNDays(startTime, t, sess.Interval)
 	}
+
+	return time.Time{}, fmt.Errorf("unknown reminder type %q", sess.Type)
 }
 
 func parseWeekday(s string) (int, bool) {
@@ -493,17 +462,39 @@ func (w *AddReminderWizard) HandleWeekdayCallback(c tele.Context) error {
 	return c.Send(texts.PromptEveryDay)
 }
 
-// convertSessionToReminderWithTZ converts an AddReminderSession to a domain Reminder с учетом таймзоны
-func convertSessionToReminderWithTZ(sess *session.AddReminderSession, nextTime time.Time) *domain.Reminder {
+// convertSessionToReminder собирает доменное напоминание из состояния мастера.
+//
+// sess.Interval переиспользуется под разные смыслы в зависимости от типа: день недели,
+// число месяца или интервал в днях. Раскладывать его нужно по соответствующим полям —
+// раньше он безусловно попадал в RepeatEvery, засоряя интервал повтора днём недели.
+func convertSessionToReminder(sess *session.AddReminderSession, nextTime time.Time) *domain.Reminder {
 	now := time.Now().UTC()
-	return &domain.Reminder{
-		ChatID:      sess.ChatID,
-		Text:        sess.Text,
-		NextTime:    nextTime.UTC(), // Конвертируем в UTC для хранения в БД
-		Repeat:      typeToRepeat(sess.Type),
-		RepeatEvery: sess.Interval,
-		Paused:      false,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+	rem := &domain.Reminder{
+		ChatID:    sess.ChatID,
+		Text:      sess.Text,
+		NextTime:  nextTime.UTC(), // Конвертируем в UTC для хранения в БД
+		Paused:    false,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
+
+	switch sess.Type {
+	case ReminderTypeEveryDay:
+		rem.Repeat = domain.RepeatEveryDay
+	case ReminderTypeWeek:
+		rem.Repeat = domain.RepeatEveryWeek
+		rem.RepeatDays = []int{sess.Interval}
+	case ReminderTypeMonth:
+		rem.Repeat = domain.RepeatEveryMonth
+		rem.RepeatDays = []int{sess.Interval}
+	case ReminderTypeYear:
+		rem.Repeat = domain.RepeatEveryYear
+	case ReminderTypeNDays:
+		rem.Repeat = domain.RepeatEveryNDays
+		rem.RepeatEvery = sess.Interval
+	case ReminderTypeToday, ReminderTypeTomorrow, ReminderTypeDate:
+		rem.Repeat = domain.RepeatNone
+	}
+
+	return rem
 }

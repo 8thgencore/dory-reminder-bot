@@ -3,14 +3,19 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 )
 
+// ErrChatNotFound возвращается, когда чата нет в базе.
+var ErrChatNotFound = errors.New("chat not found")
+
 // ChatRepository определяет интерфейс репозитория чатов.
 type ChatRepository interface {
+	// GetByID возвращает чат или ErrChatNotFound, если его нет.
 	GetByID(ctx context.Context, chatID int64) (*domain.Chat, error)
 	Upsert(ctx context.Context, chat *domain.Chat) error
 	UpdateTimezone(ctx context.Context, chatID int64, timezone string) error
@@ -22,19 +27,23 @@ type chatRepository struct {
 
 // NewChatRepository создает новый ChatRepository.
 func NewChatRepository(db *sql.DB) ChatRepository {
+	if db == nil {
+		panic("database connection cannot be nil")
+	}
+
 	return &chatRepository{db: db}
 }
 
 func (r *chatRepository) GetByID(ctx context.Context, chatID int64) (*domain.Chat, error) {
-	slog.Info("[Chat.GetByID] called", "chatID", chatID)
+	slog.Debug("[Chat.GetByID] called", "chatID", chatID)
 
 	q := `SELECT chat_id, type, name, username, timezone, created_at, updated_at FROM chats WHERE chat_id=?`
 	row := r.db.QueryRowContext(ctx, q, chatID)
 	var ch domain.Chat
 	if err := row.Scan(&ch.ID, &ch.Type, &ch.Name, &ch.Username, &ch.Timezone, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
-		if err == sql.ErrNoRows {
-			slog.Info("[Chat.GetByID] not found", "chatID", chatID)
-			return nil, nil
+		if errors.Is(err, sql.ErrNoRows) {
+			slog.Debug("[Chat.GetByID] not found", "chatID", chatID)
+			return nil, ErrChatNotFound
 		}
 		slog.Error("[Chat.GetByID] scan error", "chatID", chatID, "error", err)
 
@@ -45,7 +54,7 @@ func (r *chatRepository) GetByID(ctx context.Context, chatID int64) (*domain.Cha
 }
 
 func (r *chatRepository) Upsert(ctx context.Context, chat *domain.Chat) error {
-	slog.Info("[Chat.Upsert] called", "chat", chat)
+	slog.Debug("[Chat.Upsert] called", "chatID", chat.ID, "type", chat.Type)
 
 	now := time.Now()
 	if chat.CreatedAt.IsZero() {
@@ -88,7 +97,7 @@ func (r *chatRepository) Upsert(ctx context.Context, chat *domain.Chat) error {
 }
 
 func (r *chatRepository) UpdateTimezone(ctx context.Context, chatID int64, timezone string) error {
-	slog.Info("[Chat.UpdateTimezone] called", "chatID", chatID, "timezone", timezone)
+	slog.Debug("[Chat.UpdateTimezone] called", "chatID", chatID, "timezone", timezone)
 
 	q := `UPDATE chats SET timezone=?, updated_at=? WHERE chat_id=?`
 	_, err := r.db.ExecContext(ctx, q, timezone, time.Now(), chatID)
