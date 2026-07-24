@@ -1,5 +1,5 @@
 # Use the official Golang image as the base for building the application
-FROM golang:1.26.1-alpine3.22 AS builder
+FROM golang:1.26.5-alpine3.22 AS builder
 
 # Update and upgrade the Alpine packages, install build dependencies for CGO
 RUN apk update && apk upgrade --available && \

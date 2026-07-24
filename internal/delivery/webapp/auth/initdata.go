@@ -140,9 +140,11 @@ func (v *Validator) sign(values url.Values) string {
 // signature исключается вместе с hash: это отдельная Ed25519-подпись для сторонней
 // проверки, в HMAC она не входит.
 func dataCheckString(values url.Values) string {
+	const signatureKey = "signature"
+
 	keys := make([]string, 0, len(values))
 	for k := range values {
-		if k == "hash" || k == "signature" {
+		if k == "hash" || k == signatureKey {
 			continue
 		}
 		keys = append(keys, k)

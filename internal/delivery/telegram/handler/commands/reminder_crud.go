@@ -108,7 +108,7 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 	builder.WriteString(texts.RemindersHeader + "\n\n")
 
 	if ch, err := rc.ChatUsecase.Get(context.Background(), c.Chat().ID); err == nil && ch != nil && ch.Timezone != "" {
-		builder.WriteString(fmt.Sprintf("🕐 *Часовой пояс:* %s\n\n", ui.EscapeMarkdownV2(ch.Timezone)))
+		fmt.Fprintf(&builder, "🕐 *Часовой пояс:* %s\n\n", ui.EscapeMarkdownV2(ch.Timezone))
 	}
 
 	for i := start; i < end; i++ {
@@ -118,16 +118,16 @@ func (rc *ReminderCRUD) OnList(c tele.Context) error {
 		timeStr := ui.EscapeMarkdownV2(ui.FormatTime(r.NextTime, loc))
 		repeatStr := ui.EscapeMarkdownV2(ui.FormatRepeat(r))
 
-		builder.WriteString(fmt.Sprintf("*%d\\.* %s\n", i+1, ui.EscapeMarkdownV2(r.Text)))
+		fmt.Fprintf(&builder, "*%d\\.* %s\n", i+1, ui.EscapeMarkdownV2(r.Text))
 
 		// Отображаем статус только если напоминание приостановлено
 		if status != "" {
-			builder.WriteString(fmt.Sprintf("   %s \\| 📅 %s\n", ui.EscapeMarkdownV2(status), timeStr))
+			fmt.Fprintf(&builder, "   %s \\| 📅 %s\n", ui.EscapeMarkdownV2(status), timeStr)
 		} else {
-			builder.WriteString(fmt.Sprintf("   📅 %s\n", timeStr))
+			fmt.Fprintf(&builder, "   📅 %s\n", timeStr)
 		}
 
-		builder.WriteString(fmt.Sprintf("   🔁 %s\n", repeatStr))
+		fmt.Fprintf(&builder, "   🔁 %s\n", repeatStr)
 		builder.WriteString("\n")
 	}
 

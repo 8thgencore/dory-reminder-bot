@@ -409,9 +409,19 @@ func (w *AddReminderWizard) calcNextTime(
 }
 
 func parseWeekday(s string) (int, bool) {
+	const (
+		sunday    = "воскресенье"
+		monday    = "понедельник"
+		tuesday   = "вторник"
+		wednesday = "среда"
+		thursday  = "четверг"
+		friday    = "пятница"
+		saturday  = "суббота"
+	)
+
 	weekdays := map[string]int{
-		"воскресенье": 0, "понедельник": 1, "вторник": 2, "среда": 3,
-		"четверг": 4, "пятница": 5, "суббота": 6,
+		sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+		thursday: 4, friday: 5, saturday: 6,
 	}
 	s = strings.ToLower(strings.TrimSpace(s))
 	idx, ok := weekdays[s]

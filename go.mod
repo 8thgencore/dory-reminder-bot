@@ -1,6 +1,6 @@
 module github.com/8thgencore/dory-reminder-bot
 
-go 1.26.1
+go 1.26.5
 
 require (
 	github.com/golang-cz/devslog v0.0.17
