@@ -78,6 +78,9 @@ ENV=dev
 
 2. Получите токен бота у [@BotFather](https://t.me/BotFather) в Telegram.
 
+Для Docker-разработки скопируйте `.env.dev.example` в `.env.dev` — этот файл
+используется `docker-compose.dev.yaml`.
+
 ### Запуск в режиме разработки
 
 ```bash
@@ -167,7 +170,9 @@ cloudflared tunnel --url http://localhost:8080
 # или: ngrok http 8080
 ```
 
-Полученный адрес пропишите в `WEBAPP_PUBLIC_URL` и в @BotFather.
+Полученный адрес пропишите в `WEBAPP_PUBLIC_URL` и в @BotFather. Quick Tunnel
+(`trycloudflare.com`) предназначен только для временной отладки; для постоянной
+работы используйте Cloudflare Named Tunnel или собственный reverse proxy.
 
 ### Безопасность
 
@@ -246,7 +251,6 @@ docker compose up -d
 | `TELEGRAM_TOKEN` | Токен Telegram-бота | — (обязательно) |
 | `BOT_NAME` | Имя бота без `@` | `reminder_bot` |
 | `ENV` | Окружение: `dev` или `prod` | `dev` |
-| `CONFIG_FILE` | Путь к файлу конфигурации вместо переменных окружения | — |
 | `PROXY_URL` | Исходящий прокси для Bot API (`http`, `https`, `socks5`) | — |
 | `DB_PATH` | Путь к файлу базы данных | `data/reminders.db` |
 | `WEBAPP_ENABLED` | Включить HTTP-сервер Mini App | `false` |

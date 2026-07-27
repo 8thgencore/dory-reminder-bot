@@ -38,7 +38,7 @@ func main() {
 }
 
 func run() error {
-	cfg, err := config.NewConfig(os.Getenv("CONFIG_FILE"))
+	cfg, err := config.NewConfig()
 	if err != nil {
 		return err
 	}

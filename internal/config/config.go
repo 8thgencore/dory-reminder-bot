@@ -3,7 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"os"
+	"net/url"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -60,24 +60,11 @@ type WebAppConfig struct {
 	InitDataTTL time.Duration `env:"WEBAPP_INITDATA_TTL" env-default:"24h"`
 }
 
-// NewConfig creates a new instance of Config.
-func NewConfig(envFile string) (*Config, error) {
+// NewConfig creates a new instance of Config from environment variables.
+func NewConfig() (*Config, error) {
 	cfg := &Config{}
 
-	var err error
-	if envFile != "" {
-		// Проверяем, существует ли файл
-		if _, err := os.Stat(envFile); os.IsNotExist(err) {
-			return nil, fmt.Errorf("env file %s does not exist", envFile)
-		}
-		// Загружаем из файла
-		err = cleanenv.ReadConfig(envFile, cfg)
-	} else {
-		// Загружаем из системных переменных окружения
-		err = cleanenv.ReadEnv(cfg)
-	}
-
-	if err != nil {
+	if err := cleanenv.ReadEnv(cfg); err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
@@ -97,6 +84,12 @@ func (c *Config) Validate() error {
 	if c.WebApp.Enabled && c.WebApp.PublicURL == "" {
 		return errors.New("WEBAPP_PUBLIC_URL is required when WEBAPP_ENABLED=true: " +
 			"Telegram opens Mini Apps only over a public HTTPS URL")
+	}
+	if c.WebApp.Enabled {
+		publicURL, err := url.Parse(c.WebApp.PublicURL)
+		if err != nil || publicURL.Scheme != "https" || publicURL.Host == "" {
+			return errors.New("WEBAPP_PUBLIC_URL must be a public HTTPS URL when WEBAPP_ENABLED=true")
+		}
 	}
 
 	return nil
