@@ -28,13 +28,16 @@ const (
         created_at, updated_at
         FROM reminders WHERE id = ?`
 
-	listRemindersByChatQuery = `SELECT id, chat_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+	// ORDER BY обязателен: команды /edit, /delete, /pause адресуют напоминания по порядковому
+	// номеру из /list, а Mini App — по ID. Без явной сортировки порядок строк в SQLite
+	// не определён, и номер в списке может не совпасть с тем, что удаляется.
+	listRemindersByChatQuery = `SELECT id, chat_id, text, next_time, repeat, repeat_days, repeat_every, paused,
         created_at, updated_at
-        FROM reminders WHERE chat_id = ?`
+        FROM reminders WHERE chat_id = ? ORDER BY next_time, id`
 
-	listDueRemindersQuery = `SELECT id, chat_id, text, next_time, repeat, repeat_days, repeat_every, paused, 
+	listDueRemindersQuery = `SELECT id, chat_id, text, next_time, repeat, repeat_days, repeat_every, paused,
         created_at, updated_at
-        FROM reminders WHERE next_time <= ? AND paused = 0`
+        FROM reminders WHERE next_time <= ? AND paused = 0 ORDER BY next_time, id`
 )
 
 // Ошибки репозитория
@@ -43,6 +46,12 @@ var (
 	ErrInvalidReminder  = errors.New("invalid reminder data")
 	ErrDatabaseError    = errors.New("database error")
 )
+
+// Все временные метки записываются в UTC.
+//
+// Драйвер сериализует time.Time в строку вместе со смещением, а SQLite сравнивает
+// такие значения лексикографически. Записи в разных поясах сравнивались бы неверно,
+// и due-напоминания выпадали бы из выборки ListDue.
 
 // DBExecutor определяет интерфейс для работы с базой данных
 type DBExecutor interface {
@@ -89,11 +98,11 @@ func validateReminder(rem *domain.Reminder) error {
 	return nil
 }
 
+// Логи репозитория намеренно не содержат текст напоминания: он приватен, а в prod
+// уходит в stdout как есть.
 func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) error {
-	slog.Info("[Create] called", "reminder", rem)
-
 	if err := validateReminder(rem); err != nil {
-		slog.Error("[Create] validation failed", "reminder", rem, "error", err)
+		slog.Error("[Create] validation failed", "error", err)
 		return err
 	}
 
@@ -106,35 +115,32 @@ func (r *reminderRepository) Create(ctx context.Context, rem *domain.Reminder) e
 	}
 
 	days := serializeRepeatDays(rem.RepeatDays)
-	slog.Info("[Create] prepared data",
-		"chatID", rem.ChatID, "text", rem.Text,
-		"nextTime", rem.NextTime, "repeat", rem.Repeat, "days", days)
 
 	result, err := r.db.ExecContext(ctx, createReminderQuery,
 		rem.ChatID,
 		rem.Text,
-		rem.NextTime,
+		rem.NextTime.UTC(),
 		rem.Repeat,
 		days,
 		rem.RepeatEvery,
 		rem.Paused,
-		rem.CreatedAt,
-		rem.UpdatedAt,
+		rem.CreatedAt.UTC(),
+		rem.UpdatedAt.UTC(),
 	)
 	if err != nil {
-		slog.Error("[Create] exec failed", "reminder", rem, "error", err)
+		slog.Error("[Create] exec failed", "chatID", rem.ChatID, "error", err)
 		return fmt.Errorf("%w: failed to create reminder: %v", ErrDatabaseError, err)
 	}
 
 	// Получаем ID созданного напоминания
 	id, err := result.LastInsertId()
 	if err != nil {
-		slog.Error("[Create] failed to get last insert ID", "reminder", rem, "error", err)
+		slog.Error("[Create] failed to get last insert ID", "chatID", rem.ChatID, "error", err)
 		return fmt.Errorf("%w: failed to get last insert ID: %v", ErrDatabaseError, err)
 	}
 
 	rem.ID = id
-	slog.Info("[Create] reminder created successfully", "reminderID", id, "reminder", rem)
+	slog.Debug("[Create] reminder created", "reminderID", id, "chatID", rem.ChatID)
 
 	return nil
 }
@@ -154,13 +160,13 @@ func (r *reminderRepository) Update(ctx context.Context, rem *domain.Reminder) e
 	result, err := r.db.ExecContext(ctx, updateReminderQuery,
 		rem.ChatID,
 		rem.Text,
-		rem.NextTime,
+		rem.NextTime.UTC(),
 		rem.Repeat,
 		days,
 		rem.RepeatEvery,
 		rem.Paused,
-		rem.CreatedAt,
-		rem.UpdatedAt,
+		rem.CreatedAt.UTC(),
+		rem.UpdatedAt.UTC(),
 		rem.ID,
 	)
 	if err != nil {
@@ -228,11 +234,7 @@ func (r *reminderRepository) ListByChat(ctx context.Context, chatID int64) ([]*d
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to query reminders by chat: %v", ErrDatabaseError, err)
 	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil {
-			slog.Error("failed to close rows", "error", closeErr)
-		}
-	}()
+	defer closeRows(rows)
 
 	return scanReminders(rows)
 }
@@ -242,17 +244,23 @@ func (r *reminderRepository) ListDue(ctx context.Context, now time.Time) ([]*dom
 		now = time.Now()
 	}
 
-	rows, err := r.db.QueryContext(ctx, listDueRemindersQuery, now)
+	// Драйвер сериализует time.Time в строку со смещением, а сравнение next_time <= ?
+	// лексикографическое. Все хранимые значения в UTC, поэтому и границу приводим к UTC.
+	rows, err := r.db.QueryContext(ctx, listDueRemindersQuery, now.UTC())
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to query due reminders: %v", ErrDatabaseError, err)
 	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil {
-			slog.Error("failed to close rows", "error", closeErr)
-		}
-	}()
+	defer closeRows(rows)
 
 	return scanReminders(rows)
+}
+
+// closeRows закрывает набор строк, логируя ошибку: она не влияет на уже прочитанные данные,
+// но её потеря скрыла бы проблемы с соединением.
+func closeRows(rows *sql.Rows) {
+	if err := rows.Close(); err != nil {
+		slog.Error("failed to close rows", "error", err)
+	}
 }
 
 // serializeRepeatDays сериализует массив дней в строку для хранения в БД

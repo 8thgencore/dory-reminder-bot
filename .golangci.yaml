@@ -16,6 +16,7 @@ output:
 linters:
   default: none
   enable:
+    - dupl
     - errcheck
     - gocognit
     - goconst
@@ -57,17 +58,26 @@ linters:
     generated: lax
     rules:
       - path: (.+)\.go$
-        text: G104
-      - path: (.+)\.go$
         text: exported func .* returns unexported type .*, which can be annoying to use
       - path: (.+)\.go$
         text: should have a package comment
       - path: (.+)\.go$
         text: don't use an underscore in package name
+      # В тестах читаемость важнее строгости: длинные табличные случаи, намеренно
+      # похожие друг на друга проверки и игнорирование ошибок в хелперах — норма.
+      - path: _test\.go$
+        linters:
+          - dupl
+          - errcheck
+          - gocognit
+          - goconst
+          - gosec
+          - lll
+          - nlreturn
+          - revive
     paths:
       - \.pb\.go$
       - \.pb\.gw\.go$
-      - _test\.go$
       - bin
       - vendor
       - var
@@ -86,7 +96,6 @@ formatters:
     paths:
       - \.pb\.go$
       - \.pb\.gw\.go$
-      - _test\.go$
       - bin
       - vendor
       - var

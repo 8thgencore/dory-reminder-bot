@@ -1,6 +1,8 @@
-date/
+data/
+data_dev/
 
 .env
+.env.dev
 
 Taskfile.yaml
 taskfiles/

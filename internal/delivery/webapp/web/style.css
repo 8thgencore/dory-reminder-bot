@@ -1,0 +1,263 @@
+/*
+ * Оформление наследует тему Telegram через переменные --tg-theme-*, чтобы Mini App
+ * выглядел частью клиента в любой теме. Запасные значения — на случай запуска
+ * приложения вне Telegram (например, при отладке через curl или браузер).
+ */
+:root {
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --secondary-bg: var(--tg-theme-secondary-bg-color, #f1f1f4);
+  --text: var(--tg-theme-text-color, #000000);
+  --hint: var(--tg-theme-hint-color, #707579);
+  --link: var(--tg-theme-link-color, #2481cc);
+  --button: var(--tg-theme-button-color, #2481cc);
+  --button-text: var(--tg-theme-button-text-color, #ffffff);
+  --danger: var(--tg-theme-destructive-text-color, #e53935);
+  --radius: 12px;
+  --gap: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--secondary-bg);
+  color: var(--text);
+  /* Нижний отступ под MainButton Telegram. */
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+}
+
+main {
+  padding: var(--gap);
+}
+
+/* --- Шапка --- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--gap);
+  background: var(--bg);
+  border-bottom: 1px solid var(--secondary-bg);
+}
+
+.chat-picker {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chat-picker__label {
+  color: var(--hint);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.chat-picker select {
+  flex: 1;
+  min-width: 0;
+}
+
+.icon-button {
+  margin-left: auto;
+  padding: 6px 10px;
+  font-size: 20px;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.icon-button:active {
+  background: var(--secondary-bg);
+}
+
+/* --- Список напоминаний --- */
+
+.reminders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.reminder {
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: var(--gap);
+}
+
+.reminder--paused {
+  opacity: 0.6;
+}
+
+.reminder__text {
+  margin: 0 0 6px;
+  font-weight: 500;
+  /* Текст пользователя может быть длинным и без пробелов. */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.reminder__meta {
+  margin: 0;
+  font-size: 14px;
+  color: var(--hint);
+}
+
+.reminder__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: var(--gap);
+}
+
+.reminder__actions button {
+  flex: 1;
+  padding: 8px;
+  font-size: 14px;
+  color: var(--link);
+  background: var(--secondary-bg);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reminder__actions button.danger {
+  color: var(--danger);
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: var(--secondary-bg);
+  color: var(--hint);
+}
+
+/* --- Формы --- */
+
+.field {
+  display: block;
+  margin-bottom: var(--gap);
+  padding: var(--gap);
+  background: var(--bg);
+  border-radius: var(--radius);
+}
+
+.field__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: var(--hint);
+}
+
+.field__hint,
+.field__counter {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--hint);
+}
+
+.field__counter {
+  text-align: right;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 10px;
+  font: inherit;
+  color: var(--text);
+  background: var(--secondary-bg);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  /* iOS иначе рисует собственный вид полей, игнорируя тему. */
+  appearance: none;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--link);
+}
+
+.weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.weekday {
+  flex: 1 1 calc(100% / 7 - 6px);
+  min-width: 40px;
+  padding: 8px 0;
+  font-size: 14px;
+  text-align: center;
+  background: var(--secondary-bg);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.weekday[aria-pressed="true"] {
+  background: var(--button);
+  color: var(--button-text);
+}
+
+/* --- Служебные состояния --- */
+
+.hint,
+.empty {
+  color: var(--hint);
+  font-size: 14px;
+  text-align: center;
+}
+
+.empty {
+  padding: 40px var(--gap);
+}
+
+.error {
+  margin: var(--gap) 0 0;
+  padding: var(--gap);
+  color: var(--danger);
+  font-size: 14px;
+  background: var(--bg);
+  border-radius: var(--radius);
+}
+
+.splash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--gap);
+  color: var(--hint);
+  text-align: center;
+}
+
+[hidden] {
+  display: none !important;
+}

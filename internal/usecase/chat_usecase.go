@@ -2,19 +2,27 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/repository"
+	"github.com/8thgencore/dory-reminder-bot/pkg/timezone"
 )
+
+// ErrInvalidTimezone возвращается при попытке установить неизвестную IANA-зону.
+var ErrInvalidTimezone = errors.New("invalid timezone")
 
 // ChatUsecase описывает бизнес-логику работы с чатами
 type ChatUsecase interface {
 	GetOrCreateChat(ctx context.Context, chatID int64, chatType, title, username string) (*domain.Chat, error)
 	HasTimezone(ctx context.Context, chatID int64) (bool, error)
 	SetTimezone(ctx context.Context, chatID int64, timezone string) error
+	// Get возвращает чат или repository.ErrChatNotFound.
 	Get(ctx context.Context, chatID int64) (*domain.Chat, error)
+	// Location возвращает часовой пояс чата, откатываясь к UTC, если он не задан или не читается.
+	Location(ctx context.Context, chatID int64) *time.Location
 }
 
 type chatUsecase struct {
@@ -31,11 +39,11 @@ func (u *chatUsecase) GetOrCreateChat(
 	chatID int64,
 	chatType, name, username string,
 ) (*domain.Chat, error) {
-	slog.Info("[ChatUC.GetOrCreateChat] called", "chatID", chatID)
 	ch, err := u.chatRepo.GetByID(ctx, chatID)
-	if err != nil {
+	if err != nil && !errors.Is(err, repository.ErrChatNotFound) {
 		return nil, err
 	}
+
 	now := time.Now()
 	if ch == nil {
 		ch = &domain.Chat{ID: chatID, Type: chatType, Name: name, Username: username, CreatedAt: now, UpdatedAt: now}
@@ -45,6 +53,7 @@ func (u *chatUsecase) GetOrCreateChat(
 		ch.Username = username
 		ch.UpdatedAt = now
 	}
+
 	if err := u.chatRepo.Upsert(ctx, ch); err != nil {
 		return nil, err
 	}
@@ -54,20 +63,43 @@ func (u *chatUsecase) GetOrCreateChat(
 
 func (u *chatUsecase) HasTimezone(ctx context.Context, chatID int64) (bool, error) {
 	ch, err := u.chatRepo.GetByID(ctx, chatID)
+	if errors.Is(err, repository.ErrChatNotFound) {
+		return false, nil
+	}
 	if err != nil {
 		return false, err
-	}
-	if ch == nil {
-		return false, nil
 	}
 
 	return ch.Timezone != "", nil
 }
 
-func (u *chatUsecase) SetTimezone(ctx context.Context, chatID int64, timezone string) error {
-	return u.chatRepo.UpdateTimezone(ctx, chatID, timezone)
+func (u *chatUsecase) SetTimezone(ctx context.Context, chatID int64, tz string) error {
+	if !timezone.IsValidTimezone(tz) {
+		return ErrInvalidTimezone
+	}
+
+	return u.chatRepo.UpdateTimezone(ctx, chatID, tz)
 }
 
 func (u *chatUsecase) Get(ctx context.Context, chatID int64) (*domain.Chat, error) {
 	return u.chatRepo.GetByID(ctx, chatID)
+}
+
+func (u *chatUsecase) Location(ctx context.Context, chatID int64) *time.Location {
+	ch, err := u.chatRepo.GetByID(ctx, chatID)
+	if err != nil || ch == nil || ch.Timezone == "" {
+		return time.UTC
+	}
+
+	loc, err := time.LoadLocation(ch.Timezone)
+	if err != nil {
+		// Обычно означает отсутствие tzdata в образе — молчаливый откат в UTC сдвинул бы
+		// все напоминания чата, поэтому логируем явно.
+		slog.Error("Failed to load chat timezone, falling back to UTC",
+			"chatID", chatID, "timezone", ch.Timezone, "error", err)
+
+		return time.UTC
+	}
+
+	return loc
 }

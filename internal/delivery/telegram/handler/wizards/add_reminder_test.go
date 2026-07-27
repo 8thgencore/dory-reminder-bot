@@ -42,6 +42,26 @@ func (m *mockReminderUsecase) ListDue(ctx context.Context, now time.Time) ([]*do
 	return nil, nil
 }
 
+func (m *mockReminderUsecase) GetReminder(ctx context.Context, id int64) (*domain.Reminder, error) {
+	return nil, nil
+}
+
+func (m *mockReminderUsecase) GetOwned(ctx context.Context, id, chatID int64) (*domain.Reminder, error) {
+	return nil, nil
+}
+
+func (m *mockReminderUsecase) UpdateOwned(ctx context.Context, r *domain.Reminder, chatID int64) error {
+	return nil
+}
+
+func (m *mockReminderUsecase) DeleteOwned(ctx context.Context, id, chatID int64) error {
+	return nil
+}
+
+func (m *mockReminderUsecase) SetPausedOwned(ctx context.Context, id, chatID int64, paused bool) error {
+	return nil
+}
+
 type mockChatUsecase struct{}
 
 func (m *mockChatUsecase) Get(ctx context.Context, chatID int64) (*domain.Chat, error) {
@@ -58,6 +78,15 @@ func (m *mockChatUsecase) HasTimezone(ctx context.Context, chatID int64) (bool, 
 
 func (m *mockChatUsecase) SetTimezone(ctx context.Context, chatID int64, timezone string) error {
 	return nil
+}
+
+func (m *mockChatUsecase) Location(ctx context.Context, chatID int64) *time.Location {
+	loc, err := time.LoadLocation("Europe/Moscow")
+	if err != nil {
+		return time.UTC
+	}
+
+	return loc
 }
 
 type mockContext struct {
@@ -373,20 +402,23 @@ func TestAddWizard_InvalidInputs(t *testing.T) {
 			expected: "день недели",
 		},
 		{
+			// 32-е число месяца не существует: раньше проверка требовала лишь
+			// положительное целое, и мастер шёл дальше.
 			name: "invalid month day",
 			sess: &session.AddReminderSession{
 				UserID: 1, ChatID: 1, Type: "month", Step: session.StepInterval,
 			},
 			input:    "32",
-			expected: "Во сколько",
+			expected: "число месяца от 1 до 31",
 		},
 		{
+			// 32.13 проходило проверку регулярным выражением ^\d{2}\.\d{2}$.
 			name: "invalid year date",
 			sess: &session.AddReminderSession{
 				UserID: 1, ChatID: 1, Type: "year", Step: session.StepInterval,
 			},
 			input:    "32.13",
-			expected: "Во сколько",
+			expected: "формате ДД.ММ",
 		},
 		{
 			name: "invalid ndays date",
@@ -394,7 +426,7 @@ func TestAddWizard_InvalidInputs(t *testing.T) {
 				UserID: 1, ChatID: 1, Type: "ndays", Step: session.StepDate,
 			},
 			input:    "32.13.2024",
-			expected: "интервал в днях",
+			expected: "дату старта в формате ДД.ММ.ГГГГ",
 		},
 		{
 			name: "invalid date format",

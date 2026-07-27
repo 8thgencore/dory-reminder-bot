@@ -6,4 +6,6 @@ tasks:
     cmds:
       - go install github.com/air-verse/air@latest
       - go install mvdan.cc/gofumpt@latest
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.5.0
+      # gosec is used by `task gosec`, so it belongs here alongside the other tools.
+      - go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
