@@ -14,4 +14,7 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - ./data:/opt/app/data
+      - bot_data:/opt/app/data
+
+volumes:
+  bot_data:
