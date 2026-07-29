@@ -1,5 +1,5 @@
 # Use the official Golang image as the base for building the application
-FROM golang:1.26.5-alpine3.22 AS builder
+FROM golang:1.26.5-alpine3.24 AS builder
 
 # Update and upgrade the Alpine packages, install build dependencies for CGO
 RUN apk update && apk upgrade --available && \
@@ -35,7 +35,7 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o ./bin/main cmd/bot/main.go
 # 2 stage #
 ###########
 # Minimal runtime image: the Go toolchain is not needed to run the binary.
-FROM alpine:3.22
+FROM alpine:3.24
 
 # tzdata backs time.LoadLocation for per-chat timezones; ca-certificates is required
 # for HTTPS calls to the Telegram Bot API.
