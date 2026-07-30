@@ -1,28 +1,10 @@
 package config
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-func TestNewConfigWebAppShortName(t *testing.T) {
-	previous, wasSet := os.LookupEnv("WEBAPP_SHORT_NAME")
-	require.NoError(t, os.Unsetenv("WEBAPP_SHORT_NAME"))
-	t.Cleanup(func() {
-		if wasSet {
-			require.NoError(t, os.Setenv("WEBAPP_SHORT_NAME", previous))
-			return
-		}
-		require.NoError(t, os.Unsetenv("WEBAPP_SHORT_NAME"))
-	})
-	t.Setenv("TELEGRAM_TOKEN", "test-token")
-
-	cfg, err := NewConfig()
-	require.NoError(t, err)
-	require.Equal(t, "reminders", cfg.WebApp.ShortName)
-}
 
 func TestConfigValidateWebAppURL(t *testing.T) {
 	tests := []struct {

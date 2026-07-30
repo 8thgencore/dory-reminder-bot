@@ -62,7 +62,7 @@ func run() error {
 	chatUc := usecase.NewChatUsecase(repository.NewChatRepository(db))
 	memberUc := usecase.NewMemberUsecase(repository.NewMemberRepository(db))
 
-	h := handler.NewHandler(bot, reminderUc, chatUc, memberUc, cfg.Telegram.BotName, cfg.WebApp)
+	h := handler.NewHandler(bot, reminderUc, chatUc, memberUc, cfg.WebApp)
 	h.Register()
 	h.WebAppCommands.SetupMenuButton(bot, log)
 

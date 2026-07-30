@@ -46,23 +46,22 @@ func (c *WebAppCommands) OnApp(ctx tele.Context) error {
 // sendGroupEntry отправляет ссылку на Mini App для группового чата.
 //
 // Кнопки типа web_app Telegram разрешает только в личных чатах, поэтому из группы
-// приложение открывается ссылкой на direct-link Mini App. Идентификатор чата уходит
+// приложение открывается ссылкой на Main Mini App. Идентификатор чата уходит
 // в startapp — сервер использует его как подсказку и всё равно проверяет права.
 func (c *WebAppCommands) sendGroupEntry(ctx tele.Context) error {
-	if c.cfg.ShortName == "" {
-		return ctx.Send(texts.WebAppUsePrivate)
-	}
-
-	link := fmt.Sprintf("https://t.me/%s/%s?startapp=chat_%s",
-		url.PathEscape(c.botName),
-		url.PathEscape(c.cfg.ShortName),
-		strconv.FormatInt(ctx.Chat().ID, 10),
-	)
+	link := groupAppLink(c.botName, ctx.Chat().ID)
 
 	markup := &tele.ReplyMarkup{}
 	markup.Inline(markup.Row(markup.URL(texts.WebAppButton, link)))
 
 	return ctx.Send(texts.WebAppOpenGroup, markup)
+}
+
+func groupAppLink(botName string, chatID int64) string {
+	return fmt.Sprintf("https://t.me/%s?startapp=chat_%s",
+		url.PathEscape(botName),
+		strconv.FormatInt(chatID, 10),
+	)
 }
 
 // SetupMenuButton делает кнопку меню бота ярлыком Mini App во всех личных чатах.

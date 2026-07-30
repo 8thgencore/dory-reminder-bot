@@ -34,10 +34,10 @@ type Handler struct {
 func NewHandler(bot *tele.Bot, reminderUc usecase.ReminderUsecase,
 	chatUc usecase.ChatUsecase,
 	memberUc usecase.MemberUsecase,
-	botName string,
 	webAppCfg config.WebAppConfig,
 ) *Handler {
 	sessionMgr := session.NewSessionManager()
+	botName := bot.Me.Username
 
 	h := &Handler{
 		Bot:               bot,

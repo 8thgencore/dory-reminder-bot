@@ -37,8 +37,7 @@ type Config struct {
 type TelegramConfig struct {
 	// Обязательность проверяется в Validate, а не тегом env-required: cleanenv
 	// сообщил бы про поле "Token", тогда как настраивать нужно TELEGRAM_TOKEN.
-	Token   string `env:"TELEGRAM_TOKEN"`
-	BotName string `env:"BOT_NAME" env-default:"reminder_bot"`
+	Token string `env:"TELEGRAM_TOKEN"`
 }
 
 // DatabaseConfig описывает расположение базы данных.
@@ -54,8 +53,6 @@ type WebAppConfig struct {
 	Addr string `env:"WEBAPP_ADDR" env-default:":8080"`
 	// PublicURL — публичный HTTPS-адрес, который открывает Telegram.
 	PublicURL string `env:"WEBAPP_PUBLIC_URL"`
-	// ShortName — короткое имя direct-link Mini App из @BotFather (нужно для групп).
-	ShortName string `env:"WEBAPP_SHORT_NAME" env-default:"reminders"`
 	// InitDataTTL — максимальный возраст initData, после которого он считается протухшим.
 	InitDataTTL time.Duration `env:"WEBAPP_INITDATA_TTL" env-default:"24h"`
 }

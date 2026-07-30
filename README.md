@@ -72,7 +72,6 @@ task deps:tools
 
 ```env
 TELEGRAM_TOKEN=your_bot_token_here
-BOT_NAME=your_bot_name
 ENV=dev
 ```
 
@@ -151,8 +150,10 @@ server {
    а команда `/app` присылает кнопку запуска.
 
 4. *Для групп.* Кнопки типа `web_app` Telegram разрешает только в личных чатах,
-   поэтому из группы приложение открывается ссылкой. Заведите в @BotFather
-   **Configure Mini App** с коротким именем `reminders`.
+   поэтому из группы приложение открывается ссылкой Main Mini App. В @BotFather
+   откройте **Bot Settings → Configure Mini App → Enable Mini App** и укажите
+   `WEBAPP_PUBLIC_URL`. Команда `/app` создаст ссылку вида
+   `https://t.me/<bot_username>?startapp=chat_<group_id>`.
 
 ### Локальная отладка
 
@@ -242,14 +243,12 @@ docker compose up -d
 | Переменная | Описание | По умолчанию |
 |------------|----------|--------------|
 | `TELEGRAM_TOKEN` | Токен Telegram-бота | — (обязательно) |
-| `BOT_NAME` | Имя бота без `@` | `reminder_bot` |
 | `ENV` | Окружение: `dev` или `prod` | `dev` |
 | `PROXY_URL` | Исходящий прокси для Bot API (`http`, `https`, `socks5`) | — |
 | `DB_PATH` | Путь к файлу базы данных | `data/reminders.db` |
 | `WEBAPP_ENABLED` | Включить HTTP-сервер Mini App | `false` |
 | `WEBAPP_ADDR` | Адрес прослушивания | `:8080` |
 | `WEBAPP_PUBLIC_URL` | Публичный HTTPS-адрес приложения | — (обязательно при `WEBAPP_ENABLED=true`) |
-| `WEBAPP_SHORT_NAME` | Короткое имя direct-link Mini App для групп | `reminders` |
 | `WEBAPP_INITDATA_TTL` | Максимальный возраст `initData` | `24h` |
 
 ## 📝 Команды бота
