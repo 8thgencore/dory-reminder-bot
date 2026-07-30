@@ -103,6 +103,11 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	if !hasLaunchChat {
 		launchChatID = 0
+	} else {
+		// Чат запуска ставим первым не только для текущего клиента, который читает
+		// LaunchChatID, но и для уже открытых Telegram WebView со старым app.js:
+		// такие клиенты выбирают первый элемент списка.
+		chats = prioritizeChat(chats, launchChatID)
 	}
 
 	writeJSON(w, http.StatusOK, meResponse{
@@ -115,6 +120,25 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		Chats:        chats,
 		LaunchChatID: launchChatID,
 	})
+}
+
+func prioritizeChat(chats []chatDTO, chatID int64) []chatDTO {
+	for i := range chats {
+		if chats[i].ID != chatID {
+			continue
+		}
+		if i == 0 {
+			return chats
+		}
+
+		preferred := chats[i]
+		copy(chats[1:i+1], chats[:i])
+		chats[0] = preferred
+
+		return chats
+	}
+
+	return chats
 }
 
 func parseLaunchChatID(startParam string) (int64, bool) {

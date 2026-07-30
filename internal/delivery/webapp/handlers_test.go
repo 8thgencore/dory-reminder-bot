@@ -243,6 +243,9 @@ func TestMe_PrefersAuthorizedLaunchGroupFromSignedInitData(t *testing.T) {
 
 	body := decode[meResponse](t, resp)
 	assert.Equal(t, memberGroupID, body.LaunchChatID)
+	require.NotEmpty(t, body.Chats)
+	assert.Equal(t, memberGroupID, body.Chats[0].ID,
+		"the launch chat must be first for clients that do not read launch_chat_id")
 	assert.Contains(t, body.Chats, chatDTO{
 		ID:       memberGroupID,
 		Type:     chatTypeGroup,
