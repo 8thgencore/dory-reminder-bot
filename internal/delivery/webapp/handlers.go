@@ -104,7 +104,12 @@ func (s *server) handleGetChat(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, repository.ErrChatNotFound) {
 		// Бот ещё не видел этот чат — отдаём пустые настройки вместо 404,
 		// иначе Mini App не смог бы задать часовой пояс первым действием.
-		writeJSON(w, http.StatusOK, chatDTO{ID: chatID, Type: chatTypeFor(chatID, r)})
+		chatType := chatTypeFor(chatID, r)
+		writeJSON(w, http.StatusOK, chatDTO{
+			ID:       chatID,
+			Type:     chatType,
+			IsPublic: chatType != chatTypePrivate,
+		})
 
 		return
 	}
@@ -152,7 +157,13 @@ func (s *server) handleSetTimezone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, chatDTO{ID: chatID, Type: chatTypeFor(chatID, r), Timezone: req.Timezone})
+	chatType := chatTypeFor(chatID, r)
+	writeJSON(w, http.StatusOK, chatDTO{
+		ID:       chatID,
+		Type:     chatType,
+		Timezone: req.Timezone,
+		IsPublic: chatType != chatTypePrivate,
+	})
 }
 
 // handleListReminders отдаёт напоминания чата.

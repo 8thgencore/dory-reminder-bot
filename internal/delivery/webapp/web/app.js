@@ -621,12 +621,38 @@ function renderChatPicker() {
  * Бот кладёт идентификатор чата в start_param при открытии из группы. Значение
  * не даёт прав: сервер всё равно проверяет членство через Bot API.
  */
-function initialChatId(chats) {
-  const param = tg && tg.initDataUnsafe ? tg.initDataUnsafe.start_param : '';
+function launchChatId() {
+  // initData подписан Telegram и является основным источником. Остальные варианты
+  // нужны для клиентов разных версий; подмена безопасна, потому что API отдельно
+  // проверяет членство пользователя в запрошенном чате.
+  const signedParam = tg && tg.initData
+    ? new URLSearchParams(tg.initData).get('start_param')
+    : '';
+  const unsafeParam = tg && tg.initDataUnsafe ? tg.initDataUnsafe.start_param : '';
+  const queryParam = new URLSearchParams(window.location.search).get('tgWebAppStartParam');
+  const hashParam = new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam');
+  const param = signedParam || unsafeParam || queryParam || hashParam || '';
+
   if (param && param.startsWith('chat_')) {
     const requested = Number(param.slice('chat_'.length));
-    if (Number.isSafeInteger(requested) && chats.some((c) => c.id === requested)) {
+    if (Number.isSafeInteger(requested) && requested !== 0) {
       return requested;
+    }
+  }
+
+  return null;
+}
+
+function initialChatId(chats, requested) {
+  if (requested !== null) {
+    return requested;
+  }
+
+  const chatType = tg && tg.initDataUnsafe ? tg.initDataUnsafe.chat_type : '';
+  if (chatType === 'group' || chatType === 'supergroup') {
+    const groups = chats.filter((chat) => chat.is_group);
+    if (groups.length === 1) {
+      return groups[0].id;
     }
   }
 
@@ -648,7 +674,16 @@ async function bootstrap() {
   try {
     const me = await api('/me');
     state.chats = me.chats || [];
-    state.chatId = initialChatId(state.chats);
+    const requested = launchChatId();
+
+    // Обычно /me уже содержит группу: /app записывает её до отправки ссылки.
+    // Если Telegram открыл старую ссылку или запись ещё не появилась, догружаем
+    // чат через защищённый endpoint вместо отката к личным напоминаниям.
+    if (requested !== null && !state.chats.some((chat) => chat.id === requested)) {
+      state.chats.push(await api(`/chats/${requested}`));
+    }
+
+    state.chatId = initialChatId(state.chats, requested);
 
     if (state.chatId === null) {
       splashText.textContent = 'Не удалось определить чат.';
@@ -666,6 +701,9 @@ async function bootstrap() {
   splash.hidden = true;
   $('app').hidden = false;
   showView('list');
+  if (!state.timezone) {
+    await openSettings();
+  }
 }
 
 // --- Обработчики ----------------------------------------------------------
@@ -680,7 +718,11 @@ function wireEvents() {
     renderChatPicker();
     try {
       await loadReminders();
-      showView('list');
+      if (state.timezone) {
+        showView('list');
+      } else {
+        await openSettings();
+      }
     } catch (error) {
       showAlert(error.message);
     }

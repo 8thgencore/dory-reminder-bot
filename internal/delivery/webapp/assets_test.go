@@ -37,7 +37,7 @@ func TestStatic_ServesScriptAndStyles(t *testing.T) {
 		contentType string
 		contains    string
 	}{
-		{"/app.js", "javascript", "Telegram"},
+		{"/app.js", "javascript", "tgWebAppStartParam"},
 		{"/style.css", "css", "--tg-theme-bg-color"},
 	}
 
