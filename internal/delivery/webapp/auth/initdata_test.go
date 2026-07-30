@@ -36,9 +36,9 @@ func TestValidate_AcceptsGenuineInitData(t *testing.T) {
 	assert.Equal(t, now.Unix(), got.AuthDate.Unix())
 }
 
-// Telegram добавляет поле signature для сторонней проверки; в HMAC оно не входит,
-// и его присутствие не должно ломать валидацию.
-func TestValidate_IgnoresSignatureField(t *testing.T) {
+// Telegram добавляет поле signature для сторонней проверки; при проверке HMAC
+// оно входит в подписываемые данные наравне с остальными полями.
+func TestValidate_AcceptsSignedSignatureField(t *testing.T) {
 	raw := SignInitData(testToken, testUser(), time.Now(), map[string]string{
 		"signature": "3A2ImDLFakeEd25519Signature",
 	})
@@ -46,6 +46,18 @@ func TestValidate_IgnoresSignatureField(t *testing.T) {
 	got, err := NewValidator(testToken, time.Hour).Validate(raw)
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), got.User.ID)
+}
+
+func TestValidate_RejectsTamperedSignatureField(t *testing.T) {
+	raw := SignInitData(testToken, testUser(), time.Now(), map[string]string{
+		"signature": "3A2ImDLOriginalEd25519Signature",
+	})
+	values, err := url.ParseQuery(raw)
+	require.NoError(t, err)
+	values.Set("signature", "3A2ImDLTamperedEd25519Signature")
+
+	_, err = NewValidator(testToken, time.Hour).Validate(values.Encode())
+	assert.ErrorIs(t, err, ErrInvalidHash)
 }
 
 func TestValidate_RejectsTamperedPayload(t *testing.T) {

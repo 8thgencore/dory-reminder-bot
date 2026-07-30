@@ -134,17 +134,16 @@ func (v *Validator) sign(values url.Values) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// dataCheckString собирает строку проверки: все поля, кроме hash и signature,
+// dataCheckString собирает строку проверки: все поля, кроме hash,
 // отсортированные по ключу и склеенные переводом строки.
 //
-// signature исключается вместе с hash: это отдельная Ed25519-подпись для сторонней
-// проверки, в HMAC она не входит.
+// Telegram исключает signature только при сторонней Ed25519-проверке. При
+// проверке HMAC с токеном бота signature входит в строку наравне с остальными
+// полями.
 func dataCheckString(values url.Values) string {
-	const signatureKey = "signature"
-
 	keys := make([]string, 0, len(values))
 	for k := range values {
-		if k == "hash" || k == signatureKey {
+		if k == "hash" {
 			continue
 		}
 		keys = append(keys, k)
