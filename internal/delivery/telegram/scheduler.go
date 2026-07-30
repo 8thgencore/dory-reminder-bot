@@ -8,6 +8,7 @@ import (
 
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
+	"github.com/8thgencore/dory-reminder-bot/internal/infrastructure/telegramapi"
 	"github.com/8thgencore/dory-reminder-bot/internal/scheduling"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	tele "gopkg.in/telebot.v4"
@@ -137,6 +138,18 @@ func (s *Scheduler) deliverOne(ctx context.Context, r *domain.Reminder, now time
 	}
 
 	if _, err := s.bot.Send(&tele.Chat{ID: r.ChatID}, texts.ReminderPrefix+text); err != nil {
+		if telegramapi.IsBotUnavailable(err) {
+			if stateErr := s.chatUc.SetAvailable(ctx, r.ChatID, false); stateErr != nil {
+				slog.Error(
+					"Failed to freeze unavailable chat",
+					"chat_id", r.ChatID,
+					"error", stateErr,
+				)
+			} else {
+				slog.Warn("Telegram bot is unavailable in chat", "chat_id", r.ChatID, "error", err)
+			}
+			return
+		}
 		slog.Error("Failed to send reminder", "chat_id", r.ChatID, "reminder_id", r.ID, "error", err)
 		return
 	}

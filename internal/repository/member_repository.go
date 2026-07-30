@@ -24,17 +24,18 @@ const (
 
 	// Чаты пользователя вместе с данными самого чата: личный чат Mini App подставляет сам,
 	// поэтому здесь интересны прежде всего группы.
-	listChatsByUserQuery = `SELECT c.chat_id, c.type, c.name, c.username, c.timezone, c.created_at, c.updated_at
+	listChatsByUserQuery = `SELECT c.chat_id, c.type, c.name, c.username, c.timezone,
+            c.available, c.created_at, c.updated_at
         FROM chat_members m
         JOIN chats c ON c.chat_id = m.chat_id
-        WHERE m.user_id = ?
+        WHERE m.user_id = ? AND c.available = 1
         ORDER BY c.name, c.chat_id`
 
 	recentWebAppLaunchQuery = `SELECT c.chat_id, c.type, c.name, c.username, c.timezone,
-            c.created_at, c.updated_at
+            c.available, c.created_at, c.updated_at
         FROM webapp_launch_contexts l
         JOIN chats c ON c.chat_id = l.chat_id
-        WHERE l.user_id = ? AND l.launched_at >= ?
+        WHERE l.user_id = ? AND l.launched_at >= ? AND c.available = 1
         LIMIT 1`
 )
 
@@ -99,7 +100,14 @@ func (r *memberRepository) ListChatsByUser(ctx context.Context, userID int64) ([
 	for rows.Next() {
 		var ch domain.Chat
 		if err := rows.Scan(
-			&ch.ID, &ch.Type, &ch.Name, &ch.Username, &ch.Timezone, &ch.CreatedAt, &ch.UpdatedAt,
+			&ch.ID,
+			&ch.Type,
+			&ch.Name,
+			&ch.Username,
+			&ch.Timezone,
+			&ch.Available,
+			&ch.CreatedAt,
+			&ch.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("%w: failed to scan chat: %v", ErrDatabaseError, err)
 		}
@@ -129,6 +137,7 @@ func (r *memberRepository) RecentWebAppLaunch(
 		&ch.Name,
 		&ch.Username,
 		&ch.Timezone,
+		&ch.Available,
 		&ch.CreatedAt,
 		&ch.UpdatedAt,
 	)

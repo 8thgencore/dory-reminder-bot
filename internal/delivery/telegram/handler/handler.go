@@ -75,6 +75,10 @@ func (h *Handler) Register() {
 	// Telegram Mini App
 	h.Bot.Handle("/app", h.onApp)
 
+	// Служебные события жизненного цикла группы и самого бота.
+	h.Bot.Handle(tele.OnMigration, h.onMigration)
+	h.Bot.Handle(tele.OnMyChatMember, h.onMyChatMember)
+
 	// Callback-обработчики для типов напоминаний: все восемь кнопок ведут в один
 	// обработчик и отличаются только типом.
 	reminderTypeButtons := []struct {
@@ -182,10 +186,77 @@ func (h *Handler) rememberChat(c tele.Context) {
 		slog.Warn("Failed to upsert chat", "chat_id", chat.ID, "error", err)
 		return
 	}
+	if err := h.ChatUC.SetAvailable(ctx, chat.ID, true); err != nil {
+		slog.Warn("Failed to activate chat", "chat_id", chat.ID, "error", err)
+		return
+	}
 
 	if err := h.MemberUC.Remember(ctx, chat.ID, sender.ID); err != nil {
 		slog.Warn("Failed to remember chat member", "chat_id", chat.ID, "user_id", sender.ID, "error", err)
 	}
+}
+
+func (h *Handler) onMigration(c tele.Context) error {
+	oldChatID, newChatID := c.Migration()
+	if oldChatID == 0 || newChatID == 0 {
+		return nil
+	}
+
+	if err := h.ChatUC.MigrateChat(context.Background(), oldChatID, newChatID); err != nil {
+		slog.Error(
+			"Failed to migrate Telegram chat",
+			"old_chat_id", oldChatID,
+			"new_chat_id", newChatID,
+			"error", err,
+		)
+		return nil
+	}
+
+	slog.Info("Migrated Telegram chat", "old_chat_id", oldChatID, "new_chat_id", newChatID)
+
+	return nil
+}
+
+func (h *Handler) onMyChatMember(c tele.Context) error {
+	update, chat := c.ChatMember(), c.Chat()
+	if update == nil || update.NewChatMember == nil || chat == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+	role := update.NewChatMember.Role
+
+	switch role {
+	case tele.Creator, tele.Administrator, tele.Member, tele.Restricted:
+		name := chat.Title
+		if name == "" && chat.FirstName != "" {
+			name = chat.FirstName
+		}
+		if _, err := h.ChatUC.GetOrCreateChat(
+			ctx,
+			chat.ID,
+			string(chat.Type),
+			name,
+			chat.Username,
+		); err != nil {
+			slog.Error("Failed to reactivate Telegram chat", "chat_id", chat.ID, "error", err)
+			return nil
+		}
+		if err := h.ChatUC.SetAvailable(ctx, chat.ID, true); err != nil {
+			slog.Error("Failed to reactivate Telegram chat", "chat_id", chat.ID, "error", err)
+			return nil
+		}
+		slog.Info("Telegram bot became available in chat", "chat_id", chat.ID, "status", role)
+
+	case tele.Left, tele.Kicked:
+		if err := h.ChatUC.SetAvailable(ctx, chat.ID, false); err != nil {
+			slog.Error("Failed to freeze unavailable Telegram chat", "chat_id", chat.ID, "error", err)
+			return nil
+		}
+		slog.Warn("Telegram bot became unavailable in chat", "chat_id", chat.ID, "status", role)
+	}
+
+	return nil
 }
 
 // onCallback обрабатывает callback-запросы

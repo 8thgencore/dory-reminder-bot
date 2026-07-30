@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -51,6 +52,24 @@ func (membershipStub) ChatMemberOf(chat, _ tele.Recipient) (*tele.ChatMember, er
 	return &tele.ChatMember{Role: tele.Left}, nil
 }
 
+type desktopMigrationStub struct {
+	oldChatID int64
+	newChatID int64
+	calls     atomic.Int64
+}
+
+func (s *desktopMigrationStub) ChatMemberOf(chat, _ tele.Recipient) (*tele.ChatMember, error) {
+	s.calls.Add(1)
+	switch chat.Recipient() {
+	case strconv.FormatInt(s.oldChatID, 10):
+		return nil, tele.GroupError{MigratedTo: s.newChatID}
+	case strconv.FormatInt(s.newChatID, 10):
+		return nil, tele.ErrKickedFromSuperGroup
+	default:
+		return &tele.ChatMember{Role: tele.Left}, nil
+	}
+}
+
 // testEnv — поднятый на памяти стек: реальная БД, реальные usecase, фиктивный Bot API.
 type testEnv struct {
 	t        *testing.T
@@ -62,6 +81,12 @@ type testEnv struct {
 }
 
 func newTestEnv(t *testing.T) *testEnv {
+	return newTestEnvWithMembership(t, membershipStub{})
+}
+
+func newTestEnvWithMembership(t *testing.T, checker interface {
+	ChatMemberOf(chat, user tele.Recipient) (*tele.ChatMember, error)
+}) *testEnv {
 	t.Helper()
 
 	db, err := sql.Open("sqlite3", ":memory:?_loc=UTC")
@@ -78,7 +103,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		cfg:        config.WebAppConfig{InitDataTTL: time.Hour},
 		env:        config.Prod,
 		validator:  auth.NewValidator(botToken, time.Hour),
-		access:     authz.New(membershipStub{}),
+		access:     authz.New(checker, chatUC),
 		reminderUC: remUC,
 		chatUC:     chatUC,
 		memberUC:   memberUC,
@@ -240,6 +265,47 @@ func TestMe_ListsOnlyGroupsWithCurrentMembership(t *testing.T) {
 		ids = append(ids, chat.ID)
 	}
 	assert.ElementsMatch(t, []int64{testUserID, memberGroupID}, ids)
+}
+
+func TestMe_DesktopMigrationThenKickedFreezesNewChat(t *testing.T) {
+	const (
+		oldChatID = int64(-5342885594)
+		newChatID = int64(-1004314310091)
+	)
+	checker := &desktopMigrationStub{oldChatID: oldChatID, newChatID: newChatID}
+	env := newTestEnvWithMembership(t, checker)
+	env.seedChat(oldChatID, "group", "Europe/Moscow")
+
+	ctx := context.Background()
+	require.NoError(t, env.memberUC.Remember(ctx, oldChatID, testUserID))
+	reminder := env.createReminder(oldChatID, "перенести")
+
+	raw := initDataWith(map[string]string{"start_param": "chat_" + itoa(oldChatID)})
+	resp := env.doWithAuth(http.MethodGet, "/api/v1/me", nil, "tma "+raw)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body := decode[meResponse](t, resp)
+	assert.Zero(t, body.LaunchChatID)
+	require.Len(t, body.Chats, 1)
+	assert.Equal(t, testUserID, body.Chats[0].ID)
+	assert.EqualValues(t, 2, checker.calls.Load(), "old ID and migrated ID must each be checked once")
+
+	_, err := env.chatUC.Get(ctx, oldChatID)
+	assert.ErrorIs(t, err, repository.ErrChatNotFound)
+	newChat, err := env.chatUC.Get(ctx, newChatID)
+	require.NoError(t, err)
+	assert.False(t, newChat.Available)
+
+	moved, err := env.remUC.GetReminder(ctx, reminder.ID)
+	require.NoError(t, err)
+	assert.Equal(t, newChatID, moved.ChatID)
+
+	// Alias и available=false должны исключить повторение обоих WARN на следующем
+	// запросе того же старого Desktop-контекста.
+	resp = env.doWithAuth(http.MethodGet, "/api/v1/me", nil, "tma "+raw)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	_ = decode[meResponse](t, resp)
+	assert.EqualValues(t, 2, checker.calls.Load())
 }
 
 func TestMe_PrefersAuthorizedLaunchGroupFromSignedInitData(t *testing.T) {

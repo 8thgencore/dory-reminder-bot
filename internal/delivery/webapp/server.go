@@ -57,7 +57,7 @@ func NewServer(d Deps) *http.Server {
 		cfg:        d.Config,
 		env:        d.Env,
 		validator:  auth.NewValidator(d.BotToken, d.Config.InitDataTTL),
-		access:     authz.New(d.Bot),
+		access:     authz.New(d.Bot, d.ChatUC),
 		reminderUC: d.ReminderUC,
 		chatUC:     d.ChatUC,
 		memberUC:   d.MemberUC,

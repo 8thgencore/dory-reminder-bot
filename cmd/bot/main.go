@@ -30,6 +30,10 @@ import (
 // shutdownTimeout ограничивает время на корректное завершение HTTP-сервера.
 const shutdownTimeout = 10 * time.Second
 
+// Явный список не зависит от ранее сохранённого allowed_updates на стороне Telegram.
+// Событие message также несёт служебное сообщение о миграции группы.
+var botAllowedUpdates = []string{"message", "callback_query", "my_chat_member"}
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("Fatal error", "error", err)
@@ -112,8 +116,11 @@ func newBot(cfg *config.Config) (*tele.Bot, error) {
 	}
 
 	return tele.NewBot(tele.Settings{
-		Token:  cfg.Telegram.Token,
-		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+		Token: cfg.Telegram.Token,
+		Poller: &tele.LongPoller{
+			Timeout:        10 * time.Second,
+			AllowedUpdates: botAllowedUpdates,
+		},
 		Client: client,
 	})
 }

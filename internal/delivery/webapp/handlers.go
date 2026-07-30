@@ -58,19 +58,33 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 			chats[0].Timezone = chat.Timezone
 			continue
 		}
+		if included[chat.ID] {
+			continue
+		}
 
 		// Запись в chat_members означает лишь, что бот когда-то видел пользователя
 		// в группе. Перед раскрытием названия и добавлением чата в ответ проверяем
 		// актуальное членство через Telegram.
-		if err := s.access.Check(r.Context(), user.User.ID, chat.ID); err != nil {
+		resolvedID, err := s.access.Resolve(r.Context(), user.User.ID, chat.ID)
+		if err != nil {
 			if !errors.Is(err, authz.ErrForbidden) {
 				s.logHandlerError(r, err)
 			}
 			continue
 		}
+		if included[resolvedID] {
+			continue
+		}
+		if resolvedID != chat.ID {
+			chat, err = s.chatUC.Get(r.Context(), resolvedID)
+			if err != nil {
+				s.logHandlerError(r, err)
+				continue
+			}
+		}
 
 		chats = append(chats, toChatDTO(chat))
-		included[chat.ID] = true
+		included[resolvedID] = true
 	}
 
 	launchChatID, launchSource := s.resolveLaunchChat(r, user, &chats, included)
@@ -124,22 +138,22 @@ func (s *server) resolveLaunchChat(
 		}
 		seen[candidate.id] = true
 
-		if included[candidate.id] {
-			return candidate.id, candidate.source
-		}
-
-		if err := s.access.Check(r.Context(), user.User.ID, candidate.id); err != nil {
+		resolvedID, err := s.access.Resolve(r.Context(), user.User.ID, candidate.id)
+		if err != nil {
 			if !errors.Is(err, authz.ErrForbidden) {
 				s.logHandlerError(r, err)
 			}
 			continue
 		}
+		if included[resolvedID] {
+			return resolvedID, candidate.source
+		}
 
-		chat, err := s.chatUC.Get(r.Context(), candidate.id)
+		chat, err := s.chatUC.Get(r.Context(), resolvedID)
 		switch {
 		case errors.Is(err, repository.ErrChatNotFound):
 			dto := chatDTO{
-				ID:       candidate.id,
+				ID:       resolvedID,
 				Type:     chatTypeGroup,
 				IsPublic: true,
 			}
@@ -156,8 +170,8 @@ func (s *server) resolveLaunchChat(
 			*chats = append(*chats, toChatDTO(chat))
 		}
 
-		included[candidate.id] = true
-		return candidate.id, candidate.source
+		included[resolvedID] = true
+		return resolvedID, candidate.source
 	}
 
 	return 0, "none"
@@ -457,13 +471,17 @@ func (s *server) loadOwnedReminder(w http.ResponseWriter, r *http.Request) (*dom
 	}
 
 	user := userFrom(r.Context())
-	if err := s.access.Check(r.Context(), user.User.ID, rem.ChatID); err != nil {
+	resolvedID, err := s.access.Resolve(r.Context(), user.User.ID, rem.ChatID)
+	if err != nil {
 		if !errors.Is(err, authz.ErrForbidden) {
 			s.logHandlerError(r, err)
 		}
 
 		return notFound()
 	}
+	// Миграция в Resolve уже перенесла строку напоминания в БД. Обновляем и
+	// загруженный объект, чтобы последующие update/delete работали с новым chat_id.
+	rem.ChatID = resolvedID
 
 	return rem, true
 }
@@ -478,7 +496,8 @@ func (s *server) authorizeChat(w http.ResponseWriter, r *http.Request) (int64, b
 		return 0, false
 	}
 
-	if err := s.access.Check(r.Context(), user.User.ID, chatID); err != nil {
+	resolvedID, err := s.access.Resolve(r.Context(), user.User.ID, chatID)
+	if err != nil {
 		if !errors.Is(err, authz.ErrForbidden) {
 			s.logHandlerError(r, err)
 		}
@@ -487,7 +506,7 @@ func (s *server) authorizeChat(w http.ResponseWriter, r *http.Request) (int64, b
 		return 0, false
 	}
 
-	return chatID, true
+	return resolvedID, true
 }
 
 // timezoneOf возвращает часовой пояс чата для отображения на клиенте.

@@ -19,6 +19,10 @@ type ChatUsecase interface {
 	GetOrCreateChat(ctx context.Context, chatID int64, chatType, title, username string) (*domain.Chat, error)
 	HasTimezone(ctx context.Context, chatID int64) (bool, error)
 	SetTimezone(ctx context.Context, chatID int64, timezone string) error
+	ResolveChatID(ctx context.Context, chatID int64) (int64, error)
+	MigrateChat(ctx context.Context, oldChatID, newChatID int64) error
+	SetAvailable(ctx context.Context, chatID int64, available bool) error
+	IsAvailable(ctx context.Context, chatID int64) (bool, error)
 	// Get возвращает чат или repository.ErrChatNotFound.
 	Get(ctx context.Context, chatID int64) (*domain.Chat, error)
 	// Location возвращает часовой пояс чата, откатываясь к UTC, если он не задан или не читается.
@@ -46,7 +50,15 @@ func (u *chatUsecase) GetOrCreateChat(
 
 	now := time.Now()
 	if ch == nil {
-		ch = &domain.Chat{ID: chatID, Type: chatType, Name: name, Username: username, CreatedAt: now, UpdatedAt: now}
+		ch = &domain.Chat{
+			ID:        chatID,
+			Type:      chatType,
+			Name:      name,
+			Username:  username,
+			Available: true,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
 	} else {
 		ch.Type = chatType
 		ch.Name = name
@@ -83,6 +95,32 @@ func (u *chatUsecase) SetTimezone(ctx context.Context, chatID int64, tz string) 
 
 func (u *chatUsecase) Get(ctx context.Context, chatID int64) (*domain.Chat, error) {
 	return u.chatRepo.GetByID(ctx, chatID)
+}
+
+func (u *chatUsecase) ResolveChatID(ctx context.Context, chatID int64) (int64, error) {
+	return u.chatRepo.ResolveID(ctx, chatID)
+}
+
+func (u *chatUsecase) MigrateChat(ctx context.Context, oldChatID, newChatID int64) error {
+	return u.chatRepo.Migrate(ctx, oldChatID, newChatID)
+}
+
+func (u *chatUsecase) SetAvailable(ctx context.Context, chatID int64, available bool) error {
+	return u.chatRepo.SetAvailable(ctx, chatID, available)
+}
+
+func (u *chatUsecase) IsAvailable(ctx context.Context, chatID int64) (bool, error) {
+	ch, err := u.chatRepo.GetByID(ctx, chatID)
+	if errors.Is(err, repository.ErrChatNotFound) {
+		// Старые базы могли содержать напоминание без строки chats. Пока Telegram
+		// явно не сообщил обратное, такой чат считаем доступным.
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return ch.Available, nil
 }
 
 func (u *chatUsecase) Location(ctx context.Context, chatID int64) *time.Location {

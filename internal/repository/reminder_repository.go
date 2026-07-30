@@ -37,7 +37,13 @@ const (
 
 	listDueRemindersQuery = `SELECT id, chat_id, text, next_time, repeat, repeat_days, repeat_every, paused,
         created_at, updated_at
-        FROM reminders WHERE next_time <= ? AND paused = 0 ORDER BY next_time, id`
+        FROM reminders r
+        WHERE next_time <= ? AND paused = 0
+            AND NOT EXISTS (
+                SELECT 1 FROM chats c
+                WHERE c.chat_id = r.chat_id AND c.available = 0
+            )
+        ORDER BY next_time, id`
 )
 
 // Ошибки репозитория

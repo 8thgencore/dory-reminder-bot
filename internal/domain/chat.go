@@ -9,6 +9,7 @@ type Chat struct {
 	Name      string
 	Username  string
 	Timezone  string
+	Available bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

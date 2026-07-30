@@ -89,6 +89,22 @@ func (m *mockChatUsecase) Location(ctx context.Context, chatID int64) *time.Loca
 	return loc
 }
 
+func (m *mockChatUsecase) ResolveChatID(_ context.Context, chatID int64) (int64, error) {
+	return chatID, nil
+}
+
+func (m *mockChatUsecase) MigrateChat(context.Context, int64, int64) error {
+	return nil
+}
+
+func (m *mockChatUsecase) SetAvailable(context.Context, int64, bool) error {
+	return nil
+}
+
+func (m *mockChatUsecase) IsAvailable(context.Context, int64) (bool, error) {
+	return true, nil
+}
+
 type mockContext struct {
 	tele.Context
 	text      string

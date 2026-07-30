@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 )
 
 // migration — один шаг схемы. Version должен строго возрастать, а Statements —
@@ -95,6 +96,23 @@ var migrations = []migration{
                 ON webapp_launch_contexts(launched_at)`,
 		},
 	},
+	{
+		Version: 6,
+		Name:    "chat lifecycle",
+		Stmts: []string{
+			// Недоступный чат остаётся в базе вместе с настройками и напоминаниями,
+			// но не показывается в Mini App и не опрашивается планировщиком.
+			`ALTER TABLE chats ADD COLUMN available BOOLEAN NOT NULL DEFAULT 1`,
+			// Telegram навсегда меняет ID при переводе обычной группы в супергруппу.
+			// Alias позволяет старым кнопкам Mini App продолжать работать без повторного
+			// запроса к уже деактивированной группе.
+			`CREATE TABLE IF NOT EXISTS chat_id_aliases (
+                old_chat_id INTEGER PRIMARY KEY,
+                new_chat_id INTEGER NOT NULL,
+                migrated_at DATETIME NOT NULL
+            )`,
+		},
+	},
 }
 
 // Migrate приводит схему БД к последней версии, применяя недостающие миграции по порядку.
@@ -151,6 +169,13 @@ func applyMigration(db *sql.DB, m migration) error {
 
 	for _, stmt := range m.Stmts {
 		if _, err := tx.Exec(stmt); err != nil {
+			// Базы ранних версий могли существовать ещё до появления журнала
+			// schema_migrations. В таком случае таблица/колонка уже есть, но все
+			// версии применяются заново.
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") &&
+				strings.HasPrefix(strings.ToUpper(strings.TrimSpace(stmt)), "ALTER TABLE") {
+				continue
+			}
 			return fmt.Errorf("migration %d (%s): %w", m.Version, m.Name, err)
 		}
 	}

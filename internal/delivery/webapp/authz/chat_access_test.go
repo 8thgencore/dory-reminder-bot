@@ -152,3 +152,105 @@ func (b *blockingChecker) ChatMemberOf(_, _ tele.Recipient) (*tele.ChatMember, e
 
 	return &tele.ChatMember{Role: tele.Member}, nil
 }
+
+type lifecycleStub struct {
+	aliases   map[int64]int64
+	available map[int64]bool
+	migrated  [2]int64
+}
+
+func newLifecycleStub() *lifecycleStub {
+	return &lifecycleStub{
+		aliases:   make(map[int64]int64),
+		available: make(map[int64]bool),
+	}
+}
+
+func (s *lifecycleStub) ResolveChatID(_ context.Context, chatID int64) (int64, error) {
+	if resolved, ok := s.aliases[chatID]; ok {
+		return resolved, nil
+	}
+	return chatID, nil
+}
+
+func (s *lifecycleStub) MigrateChat(_ context.Context, oldChatID, newChatID int64) error {
+	s.aliases[oldChatID] = newChatID
+	s.available[newChatID] = true
+	s.migrated = [2]int64{oldChatID, newChatID}
+	return nil
+}
+
+func (s *lifecycleStub) SetAvailable(_ context.Context, chatID int64, available bool) error {
+	s.available[chatID] = available
+	return nil
+}
+
+func (s *lifecycleStub) IsAvailable(_ context.Context, chatID int64) (bool, error) {
+	available, found := s.available[chatID]
+	if !found {
+		return true, nil
+	}
+	return available, nil
+}
+
+type migrationChecker struct {
+	oldChatID int64
+	newChatID int64
+	newErr    error
+	calls     atomic.Int64
+}
+
+func (s *migrationChecker) ChatMemberOf(chat, _ tele.Recipient) (*tele.ChatMember, error) {
+	s.calls.Add(1)
+	switch chat.Recipient() {
+	case tele.ChatID(s.oldChatID).Recipient():
+		return nil, tele.GroupError{MigratedTo: s.newChatID}
+	case tele.ChatID(s.newChatID).Recipient():
+		if s.newErr != nil {
+			return nil, s.newErr
+		}
+		return &tele.ChatMember{Role: tele.Member}, nil
+	default:
+		return &tele.ChatMember{Role: tele.Left}, nil
+	}
+}
+
+func TestResolve_MigratesOldGroupAndRetriesNewID(t *testing.T) {
+	const (
+		oldChatID = int64(-5342885594)
+		newChatID = int64(-1004314310091)
+	)
+	checker := &migrationChecker{oldChatID: oldChatID, newChatID: newChatID}
+	lifecycle := newLifecycleStub()
+	a := New(checker, lifecycle)
+
+	resolvedID, err := a.Resolve(context.Background(), userID, oldChatID)
+	require.NoError(t, err)
+	assert.Equal(t, newChatID, resolvedID)
+	assert.Equal(t, [2]int64{oldChatID, newChatID}, lifecycle.migrated)
+	assert.EqualValues(t, 2, checker.calls.Load())
+}
+
+func TestResolve_KickedBotFreezesChatWithoutRepeatedTelegramCalls(t *testing.T) {
+	const (
+		oldChatID = int64(-5342885594)
+		newChatID = int64(-1004314310091)
+	)
+	checker := &migrationChecker{
+		oldChatID: oldChatID,
+		newChatID: newChatID,
+		newErr:    tele.ErrKickedFromSuperGroup,
+	}
+	lifecycle := newLifecycleStub()
+	a := New(checker, lifecycle)
+
+	_, err := a.Resolve(context.Background(), userID, oldChatID)
+	assert.ErrorIs(t, err, ErrForbidden)
+	assert.ErrorIs(t, err, ErrBotUnavailable)
+	assert.False(t, lifecycle.available[newChatID])
+	assert.EqualValues(t, 2, checker.calls.Load())
+
+	_, err = a.Resolve(context.Background(), userID, oldChatID)
+	assert.ErrorIs(t, err, ErrBotUnavailable)
+	assert.EqualValues(t, 2, checker.calls.Load(), "inactive chat must not hit Telegram again")
+}

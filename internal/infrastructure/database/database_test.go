@@ -36,6 +36,7 @@ func TestInitDatabase_AppliesPragmasAndMigrations(t *testing.T) {
 		"chats",
 		"chat_members",
 		"webapp_launch_contexts",
+		"chat_id_aliases",
 		"schema_migrations",
 	} {
 		var name string

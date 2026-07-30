@@ -155,7 +155,12 @@ func (s *stubReminderUC) UpdateOwned(context.Context, *domain.Reminder, int64) e
 func (s *stubReminderUC) DeleteOwned(context.Context, int64, int64) error            { return nil }
 func (s *stubReminderUC) SetPausedOwned(context.Context, int64, int64, bool) error   { return nil }
 
-type stubChatUC struct{ loc *time.Location }
+type stubChatUC struct {
+	loc             *time.Location
+	availabilitySet bool
+	availableChatID int64
+	available       bool
+}
 
 func (s *stubChatUC) Location(context.Context, int64) *time.Location {
 	if s.loc == nil {
@@ -174,6 +179,19 @@ func (s *stubChatUC) GetOrCreateChat(
 }
 func (s *stubChatUC) HasTimezone(context.Context, int64) (bool, error) { return true, nil }
 func (s *stubChatUC) SetTimezone(context.Context, int64, string) error { return nil }
+func (s *stubChatUC) ResolveChatID(_ context.Context, chatID int64) (int64, error) {
+	return chatID, nil
+}
+func (s *stubChatUC) MigrateChat(context.Context, int64, int64) error { return nil }
+func (s *stubChatUC) SetAvailable(_ context.Context, chatID int64, available bool) error {
+	s.availabilitySet = true
+	s.availableChatID = chatID
+	s.available = available
+	return nil
+}
+func (s *stubChatUC) IsAvailable(context.Context, int64) (bool, error) {
+	return true, nil
+}
 
 // --- Тесты ----------------------------------------------------------------
 
@@ -331,6 +349,24 @@ func TestDeliverDue_SendFailureStillReschedules(t *testing.T) {
 	stored := uc.get(1)
 	require.NotNil(t, stored)
 	assert.True(t, stored.NextTime.After(now))
+}
+
+func TestDeliverDue_KickedBotFreezesChat(t *testing.T) {
+	now := time.Date(2025, time.June, 10, 9, 0, 30, 0, time.UTC)
+	uc := newStubReminderUC(&domain.Reminder{
+		ID: 1, ChatID: -1004314310091, Text: "ежедневное",
+		NextTime: now.Add(-time.Minute), Repeat: domain.RepeatEveryDay,
+	})
+	bot := &stubSender{err: tele.ErrKickedFromSuperGroup}
+	chatUC := &stubChatUC{}
+	s := NewScheduler(bot, uc, chatUC)
+	s.nowFunc = func() time.Time { return now }
+
+	s.deliverDue(context.Background())
+
+	assert.True(t, chatUC.availabilitySet)
+	assert.Equal(t, int64(-1004314310091), chatUC.availableChatID)
+	assert.False(t, chatUC.available)
 }
 
 func TestDeliverDue_HandlesBatch(t *testing.T) {

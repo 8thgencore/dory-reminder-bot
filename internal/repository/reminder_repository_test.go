@@ -36,6 +36,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 	`)
 	require.NoError(t, err)
 
+	_, err = db.Exec(`
+		CREATE TABLE chats (
+			chat_id INTEGER PRIMARY KEY,
+			available BOOLEAN NOT NULL DEFAULT 1
+		)
+	`)
+	require.NoError(t, err)
+
 	return db
 }
 
