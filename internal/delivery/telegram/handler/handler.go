@@ -73,7 +73,7 @@ func (h *Handler) Register() {
 	h.Bot.Handle("/timezone", h.TimezoneWizard.OnTimezone)
 
 	// Telegram Mini App
-	h.Bot.Handle("/app", h.WebAppCommands.OnApp)
+	h.Bot.Handle("/app", h.onApp)
 
 	// Callback-обработчики для типов напоминаний: все восемь кнопок ведут в один
 	// обработчик и отличаются только типом.
@@ -106,6 +106,16 @@ func (h *Handler) Register() {
 
 	// Обработка callback-запросов
 	h.Bot.Handle(tele.OnCallback, h.onCallback)
+}
+
+// onApp запоминает чат и пользователя до выдачи ссылки. Иначе группа не попадёт
+// в GET /api/v1/me, и Mini App откроет личные напоминания вместо групповых.
+func (h *Handler) onApp(c tele.Context) error {
+	if c.Chat() != nil && c.Sender() != nil {
+		h.rememberChat(c)
+	}
+
+	return h.WebAppCommands.OnApp(c)
 }
 
 // onText обрабатывает текстовые сообщения (мастер добавления/таймзона)

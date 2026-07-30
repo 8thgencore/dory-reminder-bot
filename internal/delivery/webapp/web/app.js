@@ -587,6 +587,16 @@ async function loadReminders() {
 function renderChatPicker() {
   const picker = $('chat-picker');
   const select = $('chat-select');
+  const current = state.chats.find((chat) => chat.id === state.chatId);
+
+  if (current) {
+    if (current.is_group) {
+      const name = current.title || (current.username ? `@${current.username}` : 'Без названия');
+      $('chat-context-title').textContent = `Напоминания группы «${name}»`;
+    } else {
+      $('chat-context-title').textContent = 'Мои напоминания';
+    }
+  }
 
   // Переключатель нужен, только если чатов больше одного.
   if (state.chats.length < 2) {
@@ -667,6 +677,7 @@ function wireEvents() {
 
   $('chat-select').addEventListener('change', async (event) => {
     state.chatId = Number(event.target.value);
+    renderChatPicker();
     try {
       await loadReminders();
       showView('list');

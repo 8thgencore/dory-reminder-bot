@@ -15,10 +15,10 @@ import (
 // ErrForbidden возвращается, когда пользователь не имеет доступа к чату.
 var ErrForbidden = errors.New("access to chat is forbidden")
 
-// defaultCacheTTL — срок жизни закэшированного решения.
+// defaultCacheTTL — срок жизни закэшированного запрета.
 //
-// Каждый запрос списка иначе бил бы в Bot API (у этого бота — ещё и через прокси).
-// Плата за кэш — выбывший из чата пользователь сохраняет доступ не дольше этого срока.
+// Разрешения намеренно не кэшируются: выход или удаление из группы должны отзывать
+// доступ уже на следующем запросе.
 const defaultCacheTTL = 5 * time.Minute
 
 // memberChecker — часть API бота, нужная для проверки членства.
@@ -31,28 +31,23 @@ type cacheKey struct {
 	chatID int64
 }
 
-type cacheEntry struct {
-	allowed   bool
-	expiresAt time.Time
-}
-
 // Access проверяет права пользователя на чат через Telegram Bot API.
 type Access struct {
 	bot memberChecker
 	ttl time.Duration
 	now func() time.Time
 
-	mu    sync.RWMutex
-	cache map[cacheKey]cacheEntry
+	mu     sync.RWMutex
+	denied map[cacheKey]time.Time
 }
 
 // New создает проверку доступа поверх клиента бота.
 func New(bot memberChecker) *Access {
 	return &Access{
-		bot:   bot,
-		ttl:   defaultCacheTTL,
-		now:   time.Now,
-		cache: make(map[cacheKey]cacheEntry),
+		bot:    bot,
+		ttl:    defaultCacheTTL,
+		now:    time.Now,
+		denied: make(map[cacheKey]time.Time),
 	}
 }
 
@@ -73,11 +68,7 @@ func (a *Access) Check(ctx context.Context, userID, chatID int64) error {
 	}
 
 	key := cacheKey{userID: userID, chatID: chatID}
-	if allowed, ok := a.lookup(key); ok {
-		if allowed {
-			return nil
-		}
-
+	if a.deniedCached(key) {
 		return ErrForbidden
 	}
 
@@ -90,8 +81,11 @@ func (a *Access) Check(ctx context.Context, userID, chatID int64) error {
 		return fmt.Errorf("%w: membership check failed", ErrForbidden)
 	}
 
-	a.store(key, allowed)
 	if !allowed {
+		// Запрет можно безопасно кэшировать: устаревшее решение лишь временно
+		// задержит доступ недавно вступившему пользователю. Разрешения не кэшируем,
+		// чтобы выход или удаление из группы отзывали доступ на следующем запросе.
+		a.storeDenial(key)
 		return ErrForbidden
 	}
 
@@ -102,39 +96,35 @@ func (a *Access) Check(ctx context.Context, userID, chatID int64) error {
 func (a *Access) Forget(userID, chatID int64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	delete(a.cache, cacheKey{userID: userID, chatID: chatID})
+	delete(a.denied, cacheKey{userID: userID, chatID: chatID})
 }
 
-func (a *Access) lookup(key cacheKey) (allowed, ok bool) {
+func (a *Access) deniedCached(key cacheKey) bool {
 	a.mu.RLock()
-	entry, found := a.cache[key]
+	expiresAt, found := a.denied[key]
 	a.mu.RUnlock()
 
-	if !found || a.now().After(entry.expiresAt) {
-		return false, false
-	}
-
-	return entry.allowed, true
+	return found && !a.now().After(expiresAt)
 }
 
-func (a *Access) store(key cacheKey, allowed bool) {
+func (a *Access) storeDenial(key cacheKey) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	// Раз в записи чистим протухшее: кэш ограничен числом пар «пользователь — чат»,
 	// но без уборки он рос бы вместе с каждым новым чатом навсегда.
-	if len(a.cache) > 0 && len(a.cache)%256 == 0 {
+	if len(a.denied) > 0 && len(a.denied)%256 == 0 {
 		a.evictExpiredLocked()
 	}
 
-	a.cache[key] = cacheEntry{allowed: allowed, expiresAt: a.now().Add(a.ttl)}
+	a.denied[key] = a.now().Add(a.ttl)
 }
 
 func (a *Access) evictExpiredLocked() {
 	now := a.now()
-	for k, v := range a.cache {
-		if now.After(v.expiresAt) {
-			delete(a.cache, k)
+	for key, expiresAt := range a.denied {
+		if now.After(expiresAt) {
+			delete(a.denied, key)
 		}
 	}
 }

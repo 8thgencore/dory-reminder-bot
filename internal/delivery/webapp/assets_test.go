@@ -26,6 +26,7 @@ func TestStatic_ServesEmbeddedIndex(t *testing.T) {
 	assert.Contains(t, html, "telegram-web-app.js", "Telegram SDK must be loaded")
 	assert.Contains(t, html, "/app.js")
 	assert.Contains(t, html, "/style.css")
+	assert.Contains(t, html, `id="chat-context-title"`)
 }
 
 func TestStatic_ServesScriptAndStyles(t *testing.T) {

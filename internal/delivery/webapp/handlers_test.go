@@ -30,6 +30,8 @@ import (
 const (
 	botToken   = "123456:AAHtestTokenValueForUnitTests"
 	testUserID = int64(42)
+	// Личный чат другого пользователя.
+	foreignUserID = int64(84)
 	// Пользователь состоит в этой группе.
 	memberGroupID = int64(-1001111111111)
 	// В этой — нет.
@@ -49,10 +51,11 @@ func (membershipStub) ChatMemberOf(chat, _ tele.Recipient) (*tele.ChatMember, er
 
 // testEnv — поднятый на памяти стек: реальная БД, реальные usecase, фиктивный Bot API.
 type testEnv struct {
-	t      *testing.T
-	server *httptest.Server
-	chatUC usecase.ChatUsecase
-	remUC  usecase.ReminderUsecase
+	t        *testing.T
+	server   *httptest.Server
+	chatUC   usecase.ChatUsecase
+	memberUC usecase.MemberUsecase
+	remUC    usecase.ReminderUsecase
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -83,7 +86,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	srv := httptest.NewServer(s.routes())
 	t.Cleanup(srv.Close)
 
-	env := &testEnv{t: t, server: srv, chatUC: chatUC, remUC: remUC}
+	env := &testEnv{t: t, server: srv, chatUC: chatUC, memberUC: memberUC, remUC: remUC}
 
 	// Личный чат с известной таймзоной: без неё расчёт времени опирался бы на UTC.
 	env.seedChat(testUserID, "private", "Europe/Berlin")
@@ -205,21 +208,49 @@ func TestMe_ListsPrivateChatAlways(t *testing.T) {
 	assert.Equal(t, "Europe/Berlin", body.Chats[0].Timezone)
 }
 
+func TestMe_ListsOnlyGroupsWithCurrentMembership(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	require.NoError(t, env.memberUC.Remember(ctx, memberGroupID, testUserID))
+	require.NoError(t, env.memberUC.Remember(ctx, foreignGroupID, testUserID))
+
+	resp := env.do(http.MethodGet, "/api/v1/me", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body := decode[meResponse](t, resp)
+	ids := make([]int64, 0, len(body.Chats))
+	for _, chat := range body.Chats {
+		ids = append(ids, chat.ID)
+	}
+	assert.ElementsMatch(t, []int64{testUserID, memberGroupID}, ids)
+}
+
 // --- Авторизация доступа к чату -------------------------------------------
 
 func TestChatAccess_DeniesForeignChats(t *testing.T) {
 	env := newTestEnv(t)
 
-	paths := []string{
-		"/api/v1/chats/" + itoa(foreignGroupID),
-		"/api/v1/chats/" + itoa(foreignGroupID) + "/reminders",
+	tests := []struct {
+		method string
+		suffix string
+		body   any
+	}{
+		{http.MethodGet, "", nil},
+		{http.MethodPut, "/timezone", map[string]any{"timezone": "Europe/Moscow"}},
+		{http.MethodGet, "/reminders", nil},
+		{http.MethodPost, "/reminders", map[string]any{
+			"text": "чужое", "repeat": "daily", "time": "10:00",
+		}},
 	}
 
-	for _, path := range paths {
-		t.Run(path, func(t *testing.T) {
-			resp := env.do(http.MethodGet, path, nil)
-			assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-		})
+	for _, chatID := range []int64{foreignUserID, foreignGroupID} {
+		for _, tt := range tests {
+			path := "/api/v1/chats/" + itoa(chatID) + tt.suffix
+			t.Run(tt.method+" "+path, func(t *testing.T) {
+				resp := env.do(tt.method, path, tt.body)
+				assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+			})
+		}
 	}
 }
 
@@ -234,7 +265,6 @@ func TestChatAccess_AllowsGroupsWithMembership(t *testing.T) {
 // иначе перебором идентификаторов можно выяснить, какие записи есть в базе.
 func TestReminderAccess_ForeignReminderLooksMissing(t *testing.T) {
 	env := newTestEnv(t)
-	foreign := env.createReminder(foreignGroupID, "чужое напоминание")
 
 	tests := []struct {
 		method string
@@ -245,20 +275,24 @@ func TestReminderAccess_ForeignReminderLooksMissing(t *testing.T) {
 		{http.MethodDelete, nil},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.method, func(t *testing.T) {
-			resp := env.do(tt.method, "/api/v1/reminders/"+itoa(foreign.ID), tt.body)
-			require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	for _, chatID := range []int64{foreignUserID, foreignGroupID} {
+		foreign := env.createReminder(chatID, "чужое напоминание")
 
-			body := decode[errorResponse](t, resp)
-			assert.Equal(t, "not_found", body.Code)
-		})
+		for _, tt := range tests {
+			t.Run(itoa(chatID)+" "+tt.method, func(t *testing.T) {
+				resp := env.do(tt.method, "/api/v1/reminders/"+itoa(foreign.ID), tt.body)
+				require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+				body := decode[errorResponse](t, resp)
+				assert.Equal(t, "not_found", body.Code)
+			})
+		}
+
+		// Напоминание должно уцелеть.
+		stored, err := env.remUC.GetReminder(context.Background(), foreign.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "чужое напоминание", stored.Text)
 	}
-
-	// Напоминание должно уцелеть.
-	stored, err := env.remUC.GetReminder(context.Background(), foreign.ID)
-	require.NoError(t, err)
-	assert.Equal(t, "чужое напоминание", stored.Text)
 }
 
 func TestReminderAccess_UnknownIDIsNotFound(t *testing.T) {

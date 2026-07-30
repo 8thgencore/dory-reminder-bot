@@ -49,6 +49,17 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 			chats[0].Timezone = chat.Timezone
 			continue
 		}
+
+		// Запись в chat_members означает лишь, что бот когда-то видел пользователя
+		// в группе. Перед раскрытием названия и добавлением чата в ответ проверяем
+		// актуальное членство через Telegram.
+		if err := s.access.Check(r.Context(), user.User.ID, chat.ID); err != nil {
+			if !errors.Is(err, authz.ErrForbidden) {
+				s.logHandlerError(r, err)
+			}
+			continue
+		}
+
 		chats = append(chats, toChatDTO(chat))
 	}
 

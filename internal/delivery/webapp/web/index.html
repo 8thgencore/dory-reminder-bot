@@ -10,10 +10,13 @@
 <body>
   <div id="app" hidden>
     <header class="topbar">
-      <label class="chat-picker" id="chat-picker" hidden>
-        <span class="chat-picker__label">Чат</span>
-        <select id="chat-select"></select>
-      </label>
+      <div class="chat-context">
+        <strong class="chat-context__title" id="chat-context-title" aria-live="polite"></strong>
+        <label class="chat-picker" id="chat-picker" hidden>
+          <span class="chat-picker__label">Чат</span>
+          <select id="chat-select"></select>
+        </label>
+      </div>
       <button type="button" class="icon-button" id="settings-button" title="Настройки" aria-label="Настройки">⚙️</button>
     </header>
 

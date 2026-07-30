@@ -78,50 +78,49 @@ func TestCheck_APIErrorDeniesAndIsNotCached(t *testing.T) {
 	assert.EqualValues(t, 2, checker.calls.Load(), "failures must not be cached")
 }
 
-func TestCheck_CachesDecisions(t *testing.T) {
-	t.Run("разрешение", func(t *testing.T) {
-		checker := &stubChecker{role: tele.Member}
-		a := New(checker)
+func TestCheck_RechecksAllowedMembership(t *testing.T) {
+	checker := &stubChecker{role: tele.Member}
+	a := New(checker)
 
-		for range 5 {
-			require.NoError(t, a.Check(context.Background(), userID, groupID))
-		}
-		assert.EqualValues(t, 1, checker.calls.Load())
-	})
+	require.NoError(t, a.Check(context.Background(), userID, groupID))
+	checker.role = tele.Left
 
-	t.Run("запрет тоже кэшируется", func(t *testing.T) {
-		checker := &stubChecker{role: tele.Left}
-		a := New(checker)
+	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
+	assert.EqualValues(t, 2, checker.calls.Load(), "allowed membership must not be cached")
+}
 
-		for range 5 {
-			assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
-		}
-		assert.EqualValues(t, 1, checker.calls.Load())
-	})
+func TestCheck_CachesDenial(t *testing.T) {
+	checker := &stubChecker{role: tele.Left}
+	a := New(checker)
+
+	for range 5 {
+		assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
+	}
+	assert.EqualValues(t, 1, checker.calls.Load())
 }
 
 func TestCheck_CacheExpires(t *testing.T) {
-	checker := &stubChecker{role: tele.Member}
+	checker := &stubChecker{role: tele.Left}
 	a := New(checker)
 
 	now := time.Now()
 	a.now = func() time.Time { return now }
 
-	require.NoError(t, a.Check(context.Background(), userID, groupID))
+	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
 	require.EqualValues(t, 1, checker.calls.Load())
 
 	now = now.Add(defaultCacheTTL + time.Second)
-	require.NoError(t, a.Check(context.Background(), userID, groupID))
+	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
 	assert.EqualValues(t, 2, checker.calls.Load(), "expired entry must be refetched")
 }
 
 func TestForget_DropsCachedDecision(t *testing.T) {
-	checker := &stubChecker{role: tele.Member}
+	checker := &stubChecker{role: tele.Left}
 	a := New(checker)
 
-	require.NoError(t, a.Check(context.Background(), userID, groupID))
+	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
 	a.Forget(userID, groupID)
-	require.NoError(t, a.Check(context.Background(), userID, groupID))
+	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
 
 	assert.EqualValues(t, 2, checker.calls.Load())
 }
