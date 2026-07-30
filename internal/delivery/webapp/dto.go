@@ -64,8 +64,9 @@ type chatDTO struct {
 
 // meResponse — ответ GET /api/v1/me.
 type meResponse struct {
-	User  userDTO   `json:"user"`
-	Chats []chatDTO `json:"chats"`
+	User         userDTO   `json:"user"`
+	Chats        []chatDTO `json:"chats"`
+	LaunchChatID int64     `json:"launch_chat_id,omitempty"`
 }
 
 // reminderDTO описывает напоминание в API.

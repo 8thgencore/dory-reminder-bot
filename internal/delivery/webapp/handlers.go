@@ -34,6 +34,7 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		Title:    displayName(user),
 		Username: user.User.Username,
 	}}
+	included := map[int64]bool{user.User.ID: true}
 
 	known, err := s.memberUC.ListChats(r.Context(), user.User.ID)
 	if err != nil {
@@ -61,12 +62,47 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		}
 
 		chats = append(chats, toChatDTO(chat))
+		included[chat.ID] = true
+	}
+
+	// start_param подписан Telegram вместе с остальным initData. Если приложение
+	// открыто групповой кнопкой, добавляем именно этот чат даже при отсутствии
+	// старой записи в chat_members — но только после актуальной проверки членства.
+	launchChatID, hasLaunchChat := parseLaunchChatID(user.StartParam)
+	if hasLaunchChat && !included[launchChatID] {
+		if err := s.access.Check(r.Context(), user.User.ID, launchChatID); err != nil {
+			if !errors.Is(err, authz.ErrForbidden) {
+				s.logHandlerError(r, err)
+			}
+			hasLaunchChat = false
+		} else {
+			chat, err := s.chatUC.Get(r.Context(), launchChatID)
+			switch {
+			case errors.Is(err, repository.ErrChatNotFound):
+				chats = append(chats, chatDTO{
+					ID:       launchChatID,
+					Type:     chatTypeGroup,
+					IsPublic: true,
+				})
+			case err != nil:
+				s.logHandlerError(r, err)
+				hasLaunchChat = false
+			default:
+				chats = append(chats, toChatDTO(chat))
+			}
+			if hasLaunchChat {
+				included[launchChatID] = true
+			}
+		}
 	}
 
 	if chats[0].Timezone == "" {
 		if chat, err := s.chatUC.Get(r.Context(), user.User.ID); err == nil {
 			chats[0].Timezone = chat.Timezone
 		}
+	}
+	if !hasLaunchChat {
+		launchChatID = 0
 	}
 
 	writeJSON(w, http.StatusOK, meResponse{
@@ -76,8 +112,23 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 			LastName:  user.User.LastName,
 			Username:  user.User.Username,
 		},
-		Chats: chats,
+		Chats:        chats,
+		LaunchChatID: launchChatID,
 	})
+}
+
+func parseLaunchChatID(startParam string) (int64, bool) {
+	const prefix = "chat_"
+	if !strings.HasPrefix(startParam, prefix) {
+		return 0, false
+	}
+
+	id, err := strconv.ParseInt(strings.TrimPrefix(startParam, prefix), 10, 64)
+	if err != nil || id == 0 {
+		return 0, false
+	}
+
+	return id, true
 }
 
 // displayName собирает отображаемое имя пользователя для карточки личного чата.

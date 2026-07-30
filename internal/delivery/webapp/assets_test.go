@@ -18,6 +18,7 @@ func TestStatic_ServesEmbeddedIndex(t *testing.T) {
 	resp := env.doWithAuth(http.MethodGet, "/", nil, "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Content-Type"), "text/html")
+	assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -46,6 +47,7 @@ func TestStatic_ServesScriptAndStyles(t *testing.T) {
 			resp := env.doWithAuth(http.MethodGet, tt.path, nil, "")
 			require.Equal(t, http.StatusOK, resp.StatusCode)
 			assert.Contains(t, resp.Header.Get("Content-Type"), tt.contentType)
+			assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
 
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)

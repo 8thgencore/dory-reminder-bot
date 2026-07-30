@@ -106,7 +106,16 @@ func (e *testEnv) seedChat(chatID int64, chatType, tz string) {
 
 // initData подписывает данные запуска для тестового пользователя.
 func initData() string {
-	return auth.SignInitData(botToken, auth.User{ID: testUserID, FirstName: "Дарья"}, time.Now(), nil)
+	return initDataWith(nil)
+}
+
+func initDataWith(extra map[string]string) string {
+	return auth.SignInitData(
+		botToken,
+		auth.User{ID: testUserID, FirstName: "Дарья"},
+		time.Now(),
+		extra,
+	)
 }
 
 // do выполняет запрос с валидным initData.
@@ -223,6 +232,38 @@ func TestMe_ListsOnlyGroupsWithCurrentMembership(t *testing.T) {
 		ids = append(ids, chat.ID)
 	}
 	assert.ElementsMatch(t, []int64{testUserID, memberGroupID}, ids)
+}
+
+func TestMe_PrefersAuthorizedLaunchGroupFromSignedInitData(t *testing.T) {
+	env := newTestEnv(t)
+	raw := initDataWith(map[string]string{"start_param": "chat_" + itoa(memberGroupID)})
+
+	resp := env.doWithAuth(http.MethodGet, "/api/v1/me", nil, "tma "+raw)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body := decode[meResponse](t, resp)
+	assert.Equal(t, memberGroupID, body.LaunchChatID)
+	assert.Contains(t, body.Chats, chatDTO{
+		ID:       memberGroupID,
+		Type:     chatTypeGroup,
+		Title:    "Test",
+		Timezone: "Europe/Berlin",
+		IsPublic: true,
+	})
+}
+
+func TestMe_RejectsForeignLaunchGroupFromSignedInitData(t *testing.T) {
+	env := newTestEnv(t)
+	raw := initDataWith(map[string]string{"start_param": "chat_" + itoa(foreignGroupID)})
+
+	resp := env.doWithAuth(http.MethodGet, "/api/v1/me", nil, "tma "+raw)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body := decode[meResponse](t, resp)
+	assert.Zero(t, body.LaunchChatID)
+	for _, chat := range body.Chats {
+		assert.NotEqual(t, foreignGroupID, chat.ID)
+	}
 }
 
 // --- Авторизация доступа к чату -------------------------------------------

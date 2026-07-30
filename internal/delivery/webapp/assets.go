@@ -24,6 +24,10 @@ func (s *server) staticHandler() http.Handler {
 	assets := s.assetFS()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Telegram WebView может долго держать app.js по прежнему URL. Статика
+		// небольшая, поэтому запрещаем её хранение и всегда отдаём текущий билд.
+		w.Header().Set("Cache-Control", "no-store")
+
 		// Mini App — одностраничное приложение: неизвестные пути отдают index.html,
 		// чтобы перезагрузка на внутреннем маршруте не давала 404.
 		path := filepath.Clean(r.URL.Path)
@@ -45,7 +49,7 @@ func serveIndex(w http.ResponseWriter, r *http.Request, assets fs.FS) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// Разметка ссылается на статику по именам без хэшей, поэтому кэшировать её нельзя.
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-store")
 	// Встроенные через go:embed файлы не имеют времени модификации, поэтому берём
 	// время старта процесса: для одного билда оно постоянно.
 	http.ServeContent(w, r, "index.html", startedAt, bytes.NewReader(index))

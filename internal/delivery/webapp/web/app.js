@@ -509,6 +509,9 @@ async function submitForm() {
 async function openSettings() {
   const select = $('field-timezone');
   $('settings-error').hidden = true;
+  // Переключаем режим до сетевого запроса, чтобы MainButton сразу показывал
+  // «Сохранить», а не оставался в состоянии списка «Добавить напоминание».
+  showView('settings');
 
   if (select.options.length === 0) {
     try {
@@ -535,8 +538,6 @@ async function openSettings() {
   } else {
     hint.hidden = true;
   }
-
-  showView('settings');
 }
 
 /** Определяет часовой пояс устройства — избавляет от ручного ввода. */
@@ -674,7 +675,11 @@ async function bootstrap() {
   try {
     const me = await api('/me');
     state.chats = me.chats || [];
-    const requested = launchChatId();
+    // Сервер извлекает launch_chat_id из уже проверенного initData. Клиентский
+    // разбор остаётся запасным путём для совместимости во время обновления.
+    const requested = Number.isSafeInteger(me.launch_chat_id)
+      ? me.launch_chat_id
+      : launchChatId();
 
     // Обычно /me уже содержит группу: /app записывает её до отправки ссылки.
     // Если Telegram открыл старую ссылку или запись ещё не появилась, догружаем
@@ -700,8 +705,9 @@ async function bootstrap() {
 
   splash.hidden = true;
   $('app').hidden = false;
-  showView('list');
-  if (!state.timezone) {
+  if (state.timezone) {
+    showView('list');
+  } else {
     await openSettings();
   }
 }
