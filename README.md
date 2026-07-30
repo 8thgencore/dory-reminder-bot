@@ -150,16 +150,9 @@ server {
    `WEBAPP_PUBLIC_URL`. После этого кнопка меню в личном чате открывает приложение,
    а команда `/app` присылает кнопку запуска.
 
-4. *Опционально, для групп.* Кнопки типа `web_app` Telegram разрешает только в личных
-   чатах, поэтому из группы приложение открывается ссылкой. Заведите в @BotFather
-   **Configure Mini App** с коротким именем и укажите его:
-
-```env
-WEBAPP_SHORT_NAME=app
-```
-
-   Без этого `/app` в группе предложит открыть приложение в личном чате — нужный чат
-   там выбирается в переключателе.
+4. *Для групп.* Кнопки типа `web_app` Telegram разрешает только в личных чатах,
+   поэтому из группы приложение открывается ссылкой. Заведите в @BotFather
+   **Configure Mini App** с коротким именем `reminders`.
 
 ### Локальная отладка
 
@@ -256,7 +249,7 @@ docker compose up -d
 | `WEBAPP_ENABLED` | Включить HTTP-сервер Mini App | `false` |
 | `WEBAPP_ADDR` | Адрес прослушивания | `:8080` |
 | `WEBAPP_PUBLIC_URL` | Публичный HTTPS-адрес приложения | — (обязательно при `WEBAPP_ENABLED=true`) |
-| `WEBAPP_SHORT_NAME` | Короткое имя direct-link Mini App для групп | — |
+| `WEBAPP_SHORT_NAME` | Короткое имя direct-link Mini App для групп | `reminders` |
 | `WEBAPP_INITDATA_TTL` | Максимальный возраст `initData` | `24h` |
 
 ## 📝 Команды бота
