@@ -34,6 +34,8 @@ const (
 	foreignUserID = int64(84)
 	// Пользователь состоит в этой группе.
 	memberGroupID = int64(-1001111111111)
+	// И в этой — нужна для проверки однозначного выбора среди нескольких групп.
+	secondMemberGroupID = int64(-1003333333333)
 	// В этой — нет.
 	foreignGroupID = int64(-1002222222222)
 )
@@ -42,7 +44,7 @@ const (
 type membershipStub struct{}
 
 func (membershipStub) ChatMemberOf(chat, _ tele.Recipient) (*tele.ChatMember, error) {
-	if chat.Recipient() == "-1001111111111" {
+	if chat.Recipient() == "-1001111111111" || chat.Recipient() == "-1003333333333" {
 		return &tele.ChatMember{Role: tele.Member}, nil
 	}
 
@@ -56,6 +58,7 @@ type testEnv struct {
 	chatUC   usecase.ChatUsecase
 	memberUC usecase.MemberUsecase
 	remUC    usecase.ReminderUsecase
+	db       *sql.DB
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -86,11 +89,14 @@ func newTestEnv(t *testing.T) *testEnv {
 	srv := httptest.NewServer(s.routes())
 	t.Cleanup(srv.Close)
 
-	env := &testEnv{t: t, server: srv, chatUC: chatUC, memberUC: memberUC, remUC: remUC}
+	env := &testEnv{
+		t: t, server: srv, chatUC: chatUC, memberUC: memberUC, remUC: remUC, db: db,
+	}
 
 	// Личный чат с известной таймзоной: без неё расчёт времени опирался бы на UTC.
 	env.seedChat(testUserID, "private", "Europe/Berlin")
 	env.seedChat(memberGroupID, "group", "Europe/Berlin")
+	env.seedChat(secondMemberGroupID, "supergroup", "")
 	env.seedChat(foreignGroupID, "group", "Europe/Berlin")
 
 	return env
@@ -101,7 +107,9 @@ func (e *testEnv) seedChat(chatID int64, chatType, tz string) {
 	ctx := context.Background()
 	_, err := e.chatUC.GetOrCreateChat(ctx, chatID, chatType, "Test", "")
 	require.NoError(e.t, err)
-	require.NoError(e.t, e.chatUC.SetTimezone(ctx, chatID, tz))
+	if tz != "" {
+		require.NoError(e.t, e.chatUC.SetTimezone(ctx, chatID, tz))
+	}
 }
 
 // initData подписывает данные запуска для тестового пользователя.
@@ -266,6 +274,63 @@ func TestMe_RejectsForeignLaunchGroupFromSignedInitData(t *testing.T) {
 	assert.Zero(t, body.LaunchChatID)
 	for _, chat := range body.Chats {
 		assert.NotEqual(t, foreignGroupID, chat.ID)
+	}
+}
+
+func TestMe_UsesSignedChatContextWithoutStartParam(t *testing.T) {
+	env := newTestEnv(t)
+	raw := initDataWith(map[string]string{
+		"chat_type": "supergroup",
+		"chat":      `{"id":-1003333333333,"type":"supergroup","title":"Команда"}`,
+	})
+
+	resp := env.doWithAuth(http.MethodGet, "/api/v1/me", nil, "tma "+raw)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body := decode[meResponse](t, resp)
+	assert.Equal(t, secondMemberGroupID, body.LaunchChatID)
+	require.NotEmpty(t, body.Chats)
+	assert.Equal(t, secondMemberGroupID, body.Chats[0].ID)
+}
+
+func TestMe_UsesRecentAppCommandWhenAndroidOmitsStartParam(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	require.NoError(t, env.memberUC.Remember(ctx, memberGroupID, testUserID))
+	require.NoError(t, env.memberUC.Remember(ctx, secondMemberGroupID, testUserID))
+	require.NoError(t, env.memberUC.RememberWebAppLaunch(ctx, secondMemberGroupID, testUserID))
+
+	raw := initDataWith(map[string]string{"chat_type": "group"})
+	resp := env.doWithAuth(http.MethodGet, "/api/v1/me", nil, "tma "+raw)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body := decode[meResponse](t, resp)
+	assert.Equal(t, secondMemberGroupID, body.LaunchChatID)
+	require.NotEmpty(t, body.Chats)
+	assert.Equal(t, secondMemberGroupID, body.Chats[0].ID)
+}
+
+func TestMe_IgnoresStaleAppCommandAndPrivateLaunch(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	require.NoError(t, env.memberUC.Remember(ctx, secondMemberGroupID, testUserID))
+	require.NoError(t, env.memberUC.RememberWebAppLaunch(ctx, secondMemberGroupID, testUserID))
+	_, err := env.db.Exec(
+		`UPDATE webapp_launch_contexts SET launched_at = ? WHERE user_id = ?`,
+		time.Now().UTC().Add(-recentWebAppLaunchTTL-time.Minute),
+		testUserID,
+	)
+	require.NoError(t, err)
+
+	for _, chatType := range []string{"group", "private"} {
+		raw := initDataWith(map[string]string{"chat_type": chatType})
+		resp := env.doWithAuth(http.MethodGet, "/api/v1/me", nil, "tma "+raw)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body := decode[meResponse](t, resp)
+		assert.Zero(t, body.LaunchChatID)
+		require.NotEmpty(t, body.Chats)
+		assert.Equal(t, testUserID, body.Chats[0].ID)
 	}
 }
 

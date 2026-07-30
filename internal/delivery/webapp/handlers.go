@@ -14,6 +14,14 @@ import (
 	"github.com/8thgencore/dory-reminder-bot/pkg/timezone"
 )
 
+const recentWebAppLaunchTTL = 10 * time.Minute
+
+type launchCandidate struct {
+	id     int64
+	source string
+	chat   *auth.Chat
+}
+
 func (s *server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -65,50 +73,26 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		included[chat.ID] = true
 	}
 
-	// start_param подписан Telegram вместе с остальным initData. Если приложение
-	// открыто групповой кнопкой, добавляем именно этот чат даже при отсутствии
-	// старой записи в chat_members — но только после актуальной проверки членства.
-	launchChatID, hasLaunchChat := parseLaunchChatID(user.StartParam)
-	if hasLaunchChat && !included[launchChatID] {
-		if err := s.access.Check(r.Context(), user.User.ID, launchChatID); err != nil {
-			if !errors.Is(err, authz.ErrForbidden) {
-				s.logHandlerError(r, err)
-			}
-			hasLaunchChat = false
-		} else {
-			chat, err := s.chatUC.Get(r.Context(), launchChatID)
-			switch {
-			case errors.Is(err, repository.ErrChatNotFound):
-				chats = append(chats, chatDTO{
-					ID:       launchChatID,
-					Type:     chatTypeGroup,
-					IsPublic: true,
-				})
-			case err != nil:
-				s.logHandlerError(r, err)
-				hasLaunchChat = false
-			default:
-				chats = append(chats, toChatDTO(chat))
-			}
-			if hasLaunchChat {
-				included[launchChatID] = true
-			}
-		}
-	}
+	launchChatID, launchSource := s.resolveLaunchChat(r, user, &chats, included)
 
 	if chats[0].Timezone == "" {
 		if chat, err := s.chatUC.Get(r.Context(), user.User.ID); err == nil {
 			chats[0].Timezone = chat.Timezone
 		}
 	}
-	if !hasLaunchChat {
-		launchChatID = 0
-	} else {
+	if launchChatID != 0 {
 		// Чат запуска ставим первым не только для текущего клиента, который читает
 		// LaunchChatID, но и для уже открытых Telegram WebView со старым app.js:
 		// такие клиенты выбирают первый элемент списка.
 		chats = prioritizeChat(chats, launchChatID)
 	}
+
+	s.log.Debug(
+		"Resolved Mini App launch context",
+		"user_id", user.User.ID,
+		"launch_chat_id", launchChatID,
+		"launch_source", launchSource,
+	)
 
 	writeJSON(w, http.StatusOK, meResponse{
 		User: userDTO{
@@ -120,6 +104,104 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		Chats:        chats,
 		LaunchChatID: launchChatID,
 	})
+}
+
+// resolveLaunchChat выбирает первый доступный чат из подписанных или серверных
+// подсказок. Подсказка влияет только на выбор по умолчанию: право доступа всё равно
+// подтверждается Bot API.
+func (s *server) resolveLaunchChat(
+	r *http.Request,
+	user *auth.InitData,
+	chats *[]chatDTO,
+	included map[int64]bool,
+) (int64, string) {
+	candidates := s.launchCandidates(r, user)
+	seen := make(map[int64]bool, len(candidates))
+
+	for _, candidate := range candidates {
+		if candidate.id == 0 || seen[candidate.id] {
+			continue
+		}
+		seen[candidate.id] = true
+
+		if included[candidate.id] {
+			return candidate.id, candidate.source
+		}
+
+		if err := s.access.Check(r.Context(), user.User.ID, candidate.id); err != nil {
+			if !errors.Is(err, authz.ErrForbidden) {
+				s.logHandlerError(r, err)
+			}
+			continue
+		}
+
+		chat, err := s.chatUC.Get(r.Context(), candidate.id)
+		switch {
+		case errors.Is(err, repository.ErrChatNotFound):
+			dto := chatDTO{
+				ID:       candidate.id,
+				Type:     chatTypeGroup,
+				IsPublic: true,
+			}
+			if candidate.chat != nil {
+				dto.Type = candidate.chat.Type
+				dto.Title = candidate.chat.Title
+				dto.Username = candidate.chat.Username
+			}
+			*chats = append(*chats, dto)
+		case err != nil:
+			s.logHandlerError(r, err)
+			continue
+		default:
+			*chats = append(*chats, toChatDTO(chat))
+		}
+
+		included[candidate.id] = true
+		return candidate.id, candidate.source
+	}
+
+	return 0, "none"
+}
+
+func (s *server) launchCandidates(r *http.Request, user *auth.InitData) []launchCandidate {
+	candidates := make([]launchCandidate, 0, 3)
+
+	if id, ok := parseLaunchChatID(user.StartParam); ok {
+		candidates = append(candidates, launchCandidate{id: id, source: "start_param"})
+	}
+
+	if user.Chat != nil && isGroupChatType(user.Chat.Type) {
+		candidates = append(candidates, launchCandidate{
+			id:     user.Chat.ID,
+			source: "signed_chat",
+			chat:   user.Chat,
+		})
+	}
+
+	if isGroupChatType(user.ChatType) {
+		chat, err := s.memberUC.RecentWebAppLaunch(
+			r.Context(),
+			user.User.ID,
+			time.Now().Add(-recentWebAppLaunchTTL),
+		)
+		switch {
+		case err == nil:
+			candidates = append(candidates, launchCandidate{
+				id:     chat.ID,
+				source: "recent_app_command",
+			})
+		case errors.Is(err, repository.ErrChatNotFound):
+			// Нет свежего /app — это обычный запуск, а не ошибка.
+		default:
+			s.logHandlerError(r, err)
+		}
+	}
+
+	return candidates
+}
+
+func isGroupChatType(chatType string) bool {
+	return chatType == chatTypeGroup || chatType == "supergroup"
 }
 
 func prioritizeChat(chats []chatDTO, chatID int64) []chatDTO {

@@ -31,7 +31,13 @@ func TestInitDatabase_AppliesPragmasAndMigrations(t *testing.T) {
 	require.NoError(t, db.QueryRow("PRAGMA busy_timeout").Scan(&busyTimeout))
 	assert.Equal(t, 5000, busyTimeout)
 
-	for _, table := range []string{"reminders", "chats", "chat_members", "schema_migrations"} {
+	for _, table := range []string{
+		"reminders",
+		"chats",
+		"chat_members",
+		"webapp_launch_contexts",
+		"schema_migrations",
+	} {
 		var name string
 		err := db.QueryRow(
 			`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table,
@@ -42,9 +48,10 @@ func TestInitDatabase_AppliesPragmasAndMigrations(t *testing.T) {
 	var indexCount int
 	require.NoError(t, db.QueryRow(
 		`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN
-         ('idx_reminders_due', 'idx_reminders_chat', 'idx_chat_members_user')`,
+         ('idx_reminders_due', 'idx_reminders_chat', 'idx_chat_members_user',
+          'idx_webapp_launch_contexts_time')`,
 	).Scan(&indexCount))
-	assert.Equal(t, 3, indexCount, "scheduler and list queries rely on these indexes")
+	assert.Equal(t, 4, indexCount, "scheduler and list queries rely on these indexes")
 }
 
 // Повторный запуск не должен ни падать, ни применять миграции заново.

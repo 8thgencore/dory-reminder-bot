@@ -82,6 +82,19 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id)`,
 		},
 	},
+	{
+		Version: 5,
+		Name:    "webapp launch context",
+		Stmts: []string{
+			`CREATE TABLE IF NOT EXISTS webapp_launch_contexts (
+                user_id INTEGER PRIMARY KEY,
+                chat_id INTEGER NOT NULL,
+                launched_at DATETIME NOT NULL
+            )`,
+			`CREATE INDEX IF NOT EXISTS idx_webapp_launch_contexts_time
+                ON webapp_launch_contexts(launched_at)`,
+		},
+	},
 }
 
 // Migrate приводит схему БД к последней версии, применяя недостающие миграции по порядку.

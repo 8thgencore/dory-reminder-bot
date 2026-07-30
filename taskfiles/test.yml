@@ -8,6 +8,7 @@ tasks:
   default:
     desc: Run all tests
     cmds:
+      - node --test internal/delivery/webapp/app_js_test.mjs
       - go clean -testcache
       - go test ./... -tags=unit -v -race -count {{.TESTS_ATTEMPTS}}
   coverage:

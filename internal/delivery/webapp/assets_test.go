@@ -19,14 +19,15 @@ func TestStatic_ServesEmbeddedIndex(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Content-Type"), "text/html")
 	assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+	assert.Len(t, resp.Header.Get("X-WebApp-Asset-Version"), 12)
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
 	html := string(body)
 	assert.Contains(t, html, "telegram-web-app.js", "Telegram SDK must be loaded")
-	assert.Contains(t, html, "/app.js")
-	assert.Contains(t, html, "/style.css")
+	assert.Contains(t, html, `/app.js?v=`)
+	assert.Contains(t, html, `/style.css?v=`)
 	assert.Contains(t, html, `id="chat-context-title"`)
 }
 
@@ -38,7 +39,7 @@ func TestStatic_ServesScriptAndStyles(t *testing.T) {
 		contentType string
 		contains    string
 	}{
-		{"/app.js", "javascript", "tgWebAppStartParam"},
+		{"/app.js", "javascript", "forceMainButton"},
 		{"/style.css", "css", "--tg-theme-bg-color"},
 	}
 

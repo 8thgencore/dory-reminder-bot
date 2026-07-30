@@ -113,6 +113,20 @@ func (h *Handler) Register() {
 func (h *Handler) onApp(c tele.Context) error {
 	if c.Chat() != nil && c.Sender() != nil {
 		h.rememberChat(c)
+		if c.Chat().Type != tele.ChatPrivate {
+			if err := h.MemberUC.RememberWebAppLaunch(
+				context.Background(),
+				c.Chat().ID,
+				c.Sender().ID,
+			); err != nil {
+				slog.Warn(
+					"Failed to remember Mini App launch",
+					"chat_id", c.Chat().ID,
+					"user_id", c.Sender().ID,
+					"error", err,
+				)
+			}
+		}
 	}
 
 	return h.WebAppCommands.OnApp(c)

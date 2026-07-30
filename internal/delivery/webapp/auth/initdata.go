@@ -48,9 +48,19 @@ type User struct {
 	IsPremium    bool   `json:"is_premium"`
 }
 
+// Chat описывает подписанный Telegram-контекст запуска из меню приложений.
+type Chat struct {
+	ID       int64  `json:"id"`
+	Type     string `json:"type"`
+	Title    string `json:"title"`
+	Username string `json:"username"`
+	PhotoURL string `json:"photo_url"`
+}
+
 // InitData содержит проверенные данные запуска Mini App.
 type InitData struct {
 	User         User
+	Chat         *Chat
 	ChatType     string
 	ChatInstance string
 	StartParam   string
@@ -116,8 +126,20 @@ func (v *Validator) Validate(raw string) (*InitData, error) {
 		return nil, ErrMissingUser
 	}
 
+	var chat *Chat
+	if rawChat := values.Get("chat"); rawChat != "" {
+		chat = &Chat{}
+		if err := json.Unmarshal([]byte(rawChat), chat); err != nil {
+			return nil, fmt.Errorf("%w: chat is not valid JSON: %v", ErrMalformedInitData, err)
+		}
+		if chat.ID == 0 {
+			return nil, fmt.Errorf("%w: chat has no ID", ErrMalformedInitData)
+		}
+	}
+
 	return &InitData{
 		User:         user,
+		Chat:         chat,
 		ChatType:     values.Get("chat_type"),
 		ChatInstance: values.Get("chat_instance"),
 		StartParam:   values.Get("start_param"),

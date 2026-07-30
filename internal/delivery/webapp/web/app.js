@@ -38,6 +38,9 @@ const state = {
   selectedWeekdays: new Set(),
 };
 
+let mainButtonSyncVersion = 0;
+let telegramReady = false;
+
 const $ = (id) => document.getElementById(id);
 
 // --- Слой доступа к API ---------------------------------------------------
@@ -138,7 +141,62 @@ function timeInZone(iso, timezone) {
 
 // --- Навигация ------------------------------------------------------------
 
-function showView(view) {
+function mainButtonText(view) {
+  return view === 'list' ? 'Добавить напоминание' : 'Сохранить';
+}
+
+function nextAnimationFrame(callback) {
+  return new Promise((resolve) => {
+    const schedule = window.requestAnimationFrame || ((fn) => window.setTimeout(fn, 0));
+    schedule(() => {
+      callback();
+      resolve();
+    });
+  });
+}
+
+/**
+ * Синхронизирует нижнюю кнопку с текущим экраном.
+ *
+ * Telegram SDK запоминает последнее отправленное состояние и не отправляет его
+ * повторно. На Android нативная кнопка иногда восстанавливает старый текст, хотя
+ * SDK уже считает новый текст применённым. Принудительный hide/show через кадр
+ * создаёт реальный переход состояния и повторно доставляет параметры клиенту.
+ */
+function syncMainButton(view, force = false) {
+  if (!tg) {
+    return Promise.resolve();
+  }
+
+  const version = ++mainButtonSyncVersion;
+  const apply = () => {
+    if (version !== mainButtonSyncVersion || state.view !== view) {
+      return;
+    }
+    tg.MainButton.setParams({
+      text: mainButtonText(view),
+      is_visible: true,
+      is_active: true,
+    });
+  };
+
+  if (!force) {
+    apply();
+    return Promise.resolve();
+  }
+
+  tg.MainButton.hide();
+  return nextAnimationFrame(apply);
+}
+
+function signalTelegramReady() {
+  if (tg && !telegramReady) {
+    tg.ready();
+    telegramReady = true;
+  }
+}
+
+function showView(view, options = {}) {
   state.view = view;
   $('view-list').hidden = view !== 'list';
   $('view-form').hidden = view !== 'form';
@@ -150,12 +208,11 @@ function showView(view) {
 
   if (view === 'list') {
     tg.BackButton.hide();
-    tg.MainButton.setText('Добавить напоминание');
   } else {
     tg.BackButton.show();
-    tg.MainButton.setText('Сохранить');
   }
-  tg.MainButton.show();
+
+  return syncMainButton(view, options.forceMainButton === true);
 }
 
 function haptic(type) {
@@ -506,12 +563,11 @@ async function submitForm() {
 
 // --- Настройки ------------------------------------------------------------
 
-async function openSettings() {
+async function openSettings(options = {}) {
   const select = $('field-timezone');
   $('settings-error').hidden = true;
-  // Переключаем режим до сетевого запроса, чтобы MainButton сразу показывал
-  // «Сохранить», а не оставался в состоянии списка «Добавить напоминание».
-  showView('settings');
+  // Режим и нативная кнопка переключаются до сетевого запроса за списком зон.
+  await showView('settings', options);
 
   if (select.options.length === 0) {
     try {
@@ -538,11 +594,6 @@ async function openSettings() {
   } else {
     hint.hidden = true;
   }
-
-  // При первом запуске список зон загружается по сети. Некоторые версии Telegram
-  // Desktop успевают за это время восстановить прежнее состояние MainButton.
-  // Повторная синхронизация после await гарантирует правильный текст кнопки.
-  showView('settings');
 }
 
 /** Определяет часовой пояс устройства — избавляет от ручного ввода. */
@@ -583,11 +634,17 @@ async function saveSettings() {
 
 // --- Загрузка данных ------------------------------------------------------
 
-async function loadReminders() {
-  const data = await api(`/chats/${state.chatId}/reminders`);
+async function loadReminders(chatId = state.chatId) {
+  const data = await api(`/chats/${chatId}/reminders`);
+  if (chatId !== state.chatId) {
+    return false;
+  }
+
   state.timezone = data.timezone || '';
   state.reminders = data.reminders || [];
   renderList();
+
+  return true;
 }
 
 function renderChatPicker() {
@@ -621,52 +678,36 @@ function renderChatPicker() {
   picker.hidden = false;
 }
 
-/**
- * Определяет чат, который нужно открыть.
- *
- * Бот кладёт идентификатор чата в start_param при открытии из группы. Значение
- * не даёт прав: сервер всё равно проверяет членство через Bot API.
- */
-function launchChatId() {
-  // initData подписан Telegram и является основным источником. Остальные варианты
-  // нужны для клиентов разных версий; подмена безопасна, потому что API отдельно
-  // проверяет членство пользователя в запрошенном чате.
-  const signedParam = tg && tg.initData
-    ? new URLSearchParams(tg.initData).get('start_param')
-    : '';
-  const unsafeParam = tg && tg.initDataUnsafe ? tg.initDataUnsafe.start_param : '';
-  const queryParam = new URLSearchParams(window.location.search).get('tgWebAppStartParam');
-  const hashParam = new URLSearchParams(window.location.hash.slice(1)).get('tgWebAppStartParam');
-  const param = signedParam || unsafeParam || queryParam || hashParam || '';
-
-  if (param && param.startsWith('chat_')) {
-    const requested = Number(param.slice('chat_'.length));
-    if (Number.isSafeInteger(requested) && requested !== 0) {
-      return requested;
-    }
-  }
-
-  return null;
-}
-
 function initialChatId(chats, requested) {
-  if (requested !== null) {
+  if (requested !== null && chats.some((chat) => chat.id === requested)) {
     return requested;
-  }
-
-  const chatType = tg && tg.initDataUnsafe ? tg.initDataUnsafe.chat_type : '';
-  if (chatType === 'group' || chatType === 'supergroup') {
-    const groups = chats.filter((chat) => chat.is_group);
-    if (groups.length === 1) {
-      return groups[0].id;
-    }
   }
 
   return chats.length ? chats[0].id : null;
 }
 
+async function activateChat(chatId, options = {}) {
+  state.chatId = chatId;
+  renderChatPicker();
+
+  if (!await loadReminders(chatId)) {
+    return;
+  }
+
+  const viewPromise = state.timezone
+    ? showView('list', options)
+    : openSettings(options);
+
+  if (options.reveal === true) {
+    $('splash').hidden = true;
+    $('app').hidden = false;
+    signalTelegramReady();
+  }
+
+  await viewPromise;
+}
+
 async function bootstrap() {
-  const splash = $('splash');
   const splashText = $('splash-text');
 
   if (!tg || !tg.initData) {
@@ -674,46 +715,32 @@ async function bootstrap() {
     return;
   }
 
-  tg.ready();
   tg.expand();
 
   try {
     const me = await api('/me');
     state.chats = me.chats || [];
-    // Сервер извлекает launch_chat_id из уже проверенного initData. Клиентский
-    // разбор остаётся запасным путём для совместимости во время обновления.
+    // Сервер уже проверил все источники группового контекста и членство.
     const requested = Number.isSafeInteger(me.launch_chat_id)
       ? me.launch_chat_id
-      : launchChatId();
-
-    // Обычно /me уже содержит группу: /app записывает её до отправки ссылки.
-    // Если Telegram открыл старую ссылку или запись ещё не появилась, догружаем
-    // чат через защищённый endpoint вместо отката к личным напоминаниям.
-    if (requested !== null && !state.chats.some((chat) => chat.id === requested)) {
-      state.chats.push(await api(`/chats/${requested}`));
-    }
+      : null;
 
     state.chatId = initialChatId(state.chats, requested);
 
     if (state.chatId === null) {
       splashText.textContent = 'Не удалось определить чат.';
+      signalTelegramReady();
       return;
     }
 
-    await loadReminders();
+    await activateChat(state.chatId, {
+      forceMainButton: true,
+      reveal: true,
+    });
   } catch (error) {
     splashText.textContent = error.message;
+    signalTelegramReady();
     return;
-  }
-
-  renderChatPicker();
-
-  splash.hidden = true;
-  $('app').hidden = false;
-  if (state.timezone) {
-    showView('list');
-  } else {
-    await openSettings();
   }
 }
 
@@ -725,15 +752,8 @@ function wireEvents() {
   $('settings-button').addEventListener('click', openSettings);
 
   $('chat-select').addEventListener('change', async (event) => {
-    state.chatId = Number(event.target.value);
-    renderChatPicker();
     try {
-      await loadReminders();
-      if (state.timezone) {
-        showView('list');
-      } else {
-        await openSettings();
-      }
+      await activateChat(Number(event.target.value));
     } catch (error) {
       showAlert(error.message);
     }
@@ -760,6 +780,14 @@ function wireEvents() {
   });
 
   tg.BackButton.onClick(() => showView('list'));
+
+  if (tg.onEvent) {
+    tg.onEvent('activated', () => {
+      if (!$('app').hidden) {
+        syncMainButton(state.view, true);
+      }
+    });
+  }
 }
 
 buildWeekdayButtons();

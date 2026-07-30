@@ -19,6 +19,7 @@ func testUser() User {
 func TestValidate_AcceptsGenuineInitData(t *testing.T) {
 	now := time.Now()
 	raw := SignInitData(testToken, testUser(), now, map[string]string{
+		"chat":          `{"id":-100777,"type":"supergroup","title":"Команда","username":"team"}`,
 		"chat_type":     "private",
 		"chat_instance": "-1234567890",
 		"start_param":   "chat_-100500",
@@ -30,10 +31,22 @@ func TestValidate_AcceptsGenuineInitData(t *testing.T) {
 
 	assert.Equal(t, int64(42), got.User.ID)
 	assert.Equal(t, "dory", got.User.Username)
+	require.NotNil(t, got.Chat)
+	assert.Equal(t, int64(-100777), got.Chat.ID)
+	assert.Equal(t, "Команда", got.Chat.Title)
 	assert.Equal(t, "private", got.ChatType)
 	assert.Equal(t, "chat_-100500", got.StartParam)
 	assert.Equal(t, "AAF123", got.QueryID)
 	assert.Equal(t, now.Unix(), got.AuthDate.Unix())
+}
+
+func TestValidate_RejectsMalformedSignedChat(t *testing.T) {
+	raw := SignInitData(testToken, testUser(), time.Now(), map[string]string{
+		"chat": `{"id":"broken"}`,
+	})
+
+	_, err := NewValidator(testToken, time.Hour).Validate(raw)
+	assert.ErrorIs(t, err, ErrMalformedInitData)
 }
 
 // Telegram добавляет поле signature для сторонней проверки; при проверке HMAC

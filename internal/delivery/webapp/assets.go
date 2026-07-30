@@ -2,7 +2,9 @@ package webapp
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"io/fs"
 	"net/http"
 	"os"
@@ -47,12 +49,43 @@ func serveIndex(w http.ResponseWriter, r *http.Request, assets fs.FS) {
 		return
 	}
 
+	index, appVersion, err := versionIndexAssets(index, assets)
+	if err != nil {
+		http.Error(w, "Mini App assets are missing", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// Разметка ссылается на статику по именам без хэшей, поэтому кэшировать её нельзя.
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-WebApp-Asset-Version", appVersion)
 	// Встроенные через go:embed файлы не имеют времени модификации, поэтому берём
 	// время старта процесса: для одного билда оно постоянно.
 	http.ServeContent(w, r, "index.html", startedAt, bytes.NewReader(index))
+}
+
+func versionIndexAssets(index []byte, assets fs.FS) ([]byte, string, error) {
+	versioned := append([]byte(nil), index...)
+	appVersion := ""
+
+	for _, name := range []string{"app.js", "style.css"} {
+		content, err := fs.ReadFile(assets, name)
+		if err != nil {
+			return nil, "", err
+		}
+
+		sum := sha256.Sum256(content)
+		version := hex.EncodeToString(sum[:])[:12]
+		if name == "app.js" {
+			appVersion = version
+		}
+
+		oldPath := []byte("/" + name)
+		newPath := []byte("/" + name + "?v=" + version)
+		versioned = bytes.ReplaceAll(versioned, oldPath, newPath)
+	}
+
+	return versioned, appVersion, nil
 }
 
 // startedAt служит временем модификации статики.

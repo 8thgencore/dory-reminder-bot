@@ -47,13 +47,22 @@ func (s *chatUsecaseSpy) GetOrCreateChat(
 
 type memberUsecaseSpy struct {
 	usecase.MemberUsecase
-	chatID int64
-	userID int64
+	chatID       int64
+	userID       int64
+	launchChatID int64
+	launchUserID int64
 }
 
 func (s *memberUsecaseSpy) Remember(_ context.Context, chatID, userID int64) error {
 	s.chatID = chatID
 	s.userID = userID
+
+	return nil
+}
+
+func (s *memberUsecaseSpy) RememberWebAppLaunch(_ context.Context, chatID, userID int64) error {
+	s.launchChatID = chatID
+	s.launchUserID = userID
 
 	return nil
 }
@@ -82,4 +91,6 @@ func TestOnAppRemembersGroupBeforeSendingLink(t *testing.T) {
 	require.Equal(t, "Команда", chatUC.title)
 	require.Equal(t, groupID, memberUC.chatID)
 	require.Equal(t, userID, memberUC.userID)
+	require.Equal(t, groupID, memberUC.launchChatID)
+	require.Equal(t, userID, memberUC.launchUserID)
 }
