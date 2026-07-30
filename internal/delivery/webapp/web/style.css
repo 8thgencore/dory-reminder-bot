@@ -214,6 +214,7 @@ textarea:focus {
   padding: 8px 0;
   font-size: 14px;
   text-align: center;
+  color: var(--text);
   background: var(--secondary-bg);
   border: 1px solid transparent;
   border-radius: 8px;
