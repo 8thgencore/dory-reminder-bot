@@ -10,17 +10,29 @@ import (
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/ui"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/wizards"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
+	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	tele "gopkg.in/telebot.v4"
 )
+
+type handlerChats interface {
+	GetOrCreateChat(ctx context.Context, chatID int64, chatType, title, username string) (*domain.Chat, error)
+	MigrateChat(ctx context.Context, oldChatID, newChatID int64) error
+	SetAvailable(ctx context.Context, chatID int64, available bool) error
+}
+
+type handlerMembers interface {
+	Remember(ctx context.Context, chatID, userID int64) error
+	RememberWebAppLaunch(ctx context.Context, chatID, userID int64) error
+}
 
 // Handler представляет главный координатор для работы с напоминаниями через Telegram
 type Handler struct {
 	Bot        *tele.Bot
 	SessionMgr *session.Manager
 	BotName    string
-	ChatUC     usecase.ChatUsecase
-	MemberUC   usecase.MemberUsecase
+	ChatUC     handlerChats
+	MemberUC   handlerMembers
 
 	// Компоненты
 	BasicCommands     *commands.BasicCommands
@@ -95,21 +107,31 @@ func (h *Handler) Register() {
 		{ui.BtnDate, wizards.ReminderTypeDate},
 	}
 	for _, b := range reminderTypeButtons {
-		h.Bot.Handle(b.btn, func(c tele.Context) error {
+		h.Bot.Handle(b.btn, h.withCallbackAck(func(c tele.Context) error {
 			return h.AddReminderWizard.HandleAddTypeCallback(c, b.typ)
-		})
+		}))
 	}
 
 	// Help menu handlers
-	h.Bot.Handle(ui.BtnHelpAdd, h.cbHelpAdd)
-	h.Bot.Handle(ui.BtnHelpList, h.cbHelpList)
-	h.Bot.Handle(ui.BtnHelpManage, h.cbHelpManage)
+	h.Bot.Handle(ui.BtnHelpAdd, h.withCallbackAck(h.cbHelpAdd))
+	h.Bot.Handle(ui.BtnHelpList, h.withCallbackAck(h.cbHelpList))
+	h.Bot.Handle(ui.BtnHelpManage, h.withCallbackAck(h.cbHelpManage))
 
 	// Обработка текстовых сообщений
 	h.Bot.Handle(tele.OnText, h.onText)
 
 	// Обработка callback-запросов
-	h.Bot.Handle(tele.OnCallback, h.onCallback)
+	h.Bot.Handle(tele.OnCallback, h.withCallbackAck(h.onCallback))
+}
+
+func (h *Handler) withCallbackAck(next tele.HandlerFunc) tele.HandlerFunc {
+	return func(c tele.Context) error {
+		if err := c.Respond(); err != nil {
+			slog.Warn("Failed to acknowledge callback", "error", err)
+		}
+
+		return next(c)
+	}
 }
 
 // onApp запоминает чат и пользователя до выдачи ссылки. Иначе группа не попадёт
@@ -176,18 +198,14 @@ func (h *Handler) onText(c tele.Context) error {
 func (h *Handler) rememberChat(c tele.Context) {
 	chat, sender := c.Chat(), c.Sender()
 
-	name := chat.Title
-	if name == "" && chat.FirstName != "" {
-		name = chat.FirstName
-	}
-
 	ctx := context.Background()
-	if _, err := h.ChatUC.GetOrCreateChat(ctx, chat.ID, string(chat.Type), name, chat.Username); err != nil {
-		slog.Warn("Failed to upsert chat", "chat_id", chat.ID, "error", err)
-		return
-	}
-	if err := h.ChatUC.SetAvailable(ctx, chat.ID, true); err != nil {
-		slog.Warn("Failed to activate chat", "chat_id", chat.ID, "error", err)
+	upsertFailed, err := h.activateChat(ctx, chat)
+	if err != nil {
+		message := "Failed to activate chat"
+		if upsertFailed {
+			message = "Failed to upsert chat"
+		}
+		slog.Warn(message, "chat_id", chat.ID, "error", err)
 		return
 	}
 
@@ -228,21 +246,7 @@ func (h *Handler) onMyChatMember(c tele.Context) error {
 
 	switch role {
 	case tele.Creator, tele.Administrator, tele.Member, tele.Restricted:
-		name := chat.Title
-		if name == "" && chat.FirstName != "" {
-			name = chat.FirstName
-		}
-		if _, err := h.ChatUC.GetOrCreateChat(
-			ctx,
-			chat.ID,
-			string(chat.Type),
-			name,
-			chat.Username,
-		); err != nil {
-			slog.Error("Failed to reactivate Telegram chat", "chat_id", chat.ID, "error", err)
-			return nil
-		}
-		if err := h.ChatUC.SetAvailable(ctx, chat.ID, true); err != nil {
+		if _, err := h.activateChat(ctx, chat); err != nil {
 			slog.Error("Failed to reactivate Telegram chat", "chat_id", chat.ID, "error", err)
 			return nil
 		}
@@ -257,6 +261,31 @@ func (h *Handler) onMyChatMember(c tele.Context) error {
 	}
 
 	return nil
+}
+
+func (h *Handler) activateChat(ctx context.Context, chat *tele.Chat) (bool, error) {
+	if _, err := h.ChatUC.GetOrCreateChat(
+		ctx,
+		chat.ID,
+		string(chat.Type),
+		chatDisplayName(chat),
+		chat.Username,
+	); err != nil {
+		return true, err
+	}
+	if err := h.ChatUC.SetAvailable(ctx, chat.ID, true); err != nil {
+		return false, err
+	}
+
+	return false, nil
+}
+
+func chatDisplayName(chat *tele.Chat) string {
+	if chat.Title != "" {
+		return chat.Title
+	}
+
+	return chat.FirstName
 }
 
 // onCallback обрабатывает callback-запросы

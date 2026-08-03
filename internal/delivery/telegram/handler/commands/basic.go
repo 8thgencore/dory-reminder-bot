@@ -5,18 +5,23 @@ import (
 	"log/slog"
 
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
-	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
+	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 	tele "gopkg.in/telebot.v4"
 )
 
+type chatStarter interface {
+	GetOrCreateChat(ctx context.Context, chatID int64, chatType, title, username string) (*domain.Chat, error)
+	HasTimezone(ctx context.Context, chatID int64) (bool, error)
+}
+
 // BasicCommands содержит обработчики базовых команд
 type BasicCommands struct {
-	ChatUsecase usecase.ChatUsecase
+	ChatUsecase chatStarter
 	GetMainMenu func() *tele.ReplyMarkup
 }
 
 // NewBasicCommands создает новый экземпляр BasicCommands
-func NewBasicCommands(chatUc usecase.ChatUsecase, getMainMenu func() *tele.ReplyMarkup) *BasicCommands {
+func NewBasicCommands(chatUc chatStarter, getMainMenu func() *tele.ReplyMarkup) *BasicCommands {
 	return &BasicCommands{
 		ChatUsecase: chatUc,
 		GetMainMenu: getMainMenu,

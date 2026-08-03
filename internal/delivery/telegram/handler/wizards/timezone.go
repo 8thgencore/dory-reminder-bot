@@ -7,14 +7,18 @@ import (
 
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/session"
-	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	"github.com/8thgencore/dory-reminder-bot/pkg/timezone"
 	tele "gopkg.in/telebot.v4"
 )
 
+type timezoneUsecase interface {
+	HasTimezone(ctx context.Context, chatID int64) (bool, error)
+	SetTimezone(ctx context.Context, chatID int64, timezone string) error
+}
+
 // TimezoneWizard обрабатывает мастер настройки часового пояса
 type TimezoneWizard struct {
-	ChatUsecase    usecase.ChatUsecase
+	ChatUsecase    timezoneUsecase
 	SessionManager *session.Manager
 	GetMainMenu    func() *tele.ReplyMarkup
 	BotName        string
@@ -22,7 +26,7 @@ type TimezoneWizard struct {
 
 // NewTimezoneWizard создает новый экземпляр мастера настройки часового пояса
 func NewTimezoneWizard(
-	chatUc usecase.ChatUsecase,
+	chatUc timezoneUsecase,
 	sessionMgr *session.Manager,
 	getMainMenu func() *tele.ReplyMarkup,
 	botName string,

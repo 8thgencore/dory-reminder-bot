@@ -96,10 +96,10 @@ func (s *server) firstOccurrence(
 			return time.Time{}, fmt.Errorf("%w: date is required for one-time reminders", scheduling.ErrInvalidDate)
 		}
 
-		return s.timeCalc.GetNextTimeDate(clock, *req.Date, loc)
+		return scheduling.AtDate(clock, *req.Date, loc)
 
 	case domain.RepeatEveryDay:
-		return s.timeCalc.GetNextTimeEveryDay(now, clock), nil
+		return scheduling.NextToday(now, clock), nil
 
 	case domain.RepeatEveryWeek:
 		return s.earliestWeekday(now, clock, rem.RepeatDays)
@@ -109,7 +109,7 @@ func (s *server) firstOccurrence(
 			return time.Time{}, fmt.Errorf("%w: day of month is required", scheduling.ErrInvalidDate)
 		}
 
-		return s.timeCalc.GetNextTimeMonth(now, clock, rem.RepeatDays[0])
+		return scheduling.NextMonthDay(now, clock, rem.RepeatDays[0])
 
 	case domain.RepeatEveryNDays:
 		return s.firstNDaysOccurrence(rem, req, now, clock, loc)
@@ -123,7 +123,7 @@ func (s *server) firstOccurrence(
 			return time.Time{}, err
 		}
 
-		return s.timeCalc.GetNextTimeYear(now, clock, dayMonth)
+		return scheduling.NextYearDay(now, clock, dayMonth)
 	}
 
 	return time.Time{}, fmt.Errorf("%w: unsupported repeat type", domain.ErrInvalidRepeat)
@@ -137,7 +137,7 @@ func (s *server) earliestWeekday(now, clock time.Time, days []int) (time.Time, e
 
 	var earliest time.Time
 	for _, day := range days {
-		candidate, err := s.timeCalc.GetNextTimeWeek(now, clock, day)
+		candidate, err := scheduling.NextWeekday(now, clock, day)
 		if err != nil {
 			return time.Time{}, err
 		}
@@ -164,7 +164,7 @@ func (s *server) firstNDaysOccurrence(
 	}
 
 	if req.Date == nil {
-		return s.timeCalc.GetNextTimeToday(now, clock), nil
+		return scheduling.NextToday(now, clock), nil
 	}
 
 	start, err := validator.ParseDateDDMMYYYY(*req.Date, loc)
@@ -172,7 +172,7 @@ func (s *server) firstNDaysOccurrence(
 		return time.Time{}, fmt.Errorf("%w: %q is not a valid DD.MM.YYYY date", scheduling.ErrInvalidDate, *req.Date)
 	}
 
-	next, err := s.timeCalc.GetNextTimeNDays(start, clock, rem.RepeatEvery)
+	next, err := scheduling.NextNDays(start, clock, rem.RepeatEvery)
 	if err != nil {
 		return time.Time{}, err
 	}

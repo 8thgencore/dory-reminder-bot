@@ -44,31 +44,16 @@ func ParseDateDDMMYYYY(s string, loc *time.Location) (time.Time, error) {
 	return time.ParseInLocation(dayMonthYearLayout, s, loc)
 }
 
-// ParseDayMonth разбирает дату ДД.ММ и возвращает день и месяц.
-func ParseDayMonth(s string) (day int, month time.Month, err error) {
-	t, err := time.Parse(dayMonthYearLayout, s+".2024")
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return t.Day(), t.Month(), nil
-}
-
-// IsInterval проверяет, что строка — целое число в диапазоне [1, MaxRepeatEvery]
-func IsInterval(s string) bool {
+// ParseInterval разбирает интервал в диапазоне [1, MaxRepeatEvery].
+func ParseInterval(s string) (int, bool) {
 	n, err := strconv.Atoi(s)
 
-	return err == nil && n >= 1 && n <= MaxRepeatEvery
+	return n, err == nil && n >= 1 && n <= MaxRepeatEvery
 }
 
-// IsDayOfMonth проверяет, что строка — число месяца в диапазоне [1, 31]
-func IsDayOfMonth(s string) bool {
+// ParseDayOfMonth разбирает число месяца в диапазоне [1, 31].
+func ParseDayOfMonth(s string) (int, bool) {
 	n, err := strconv.Atoi(s)
 
-	return err == nil && n >= 1 && n <= 31
-}
-
-// IsNotEmpty проверяет, что строка не пустая (для текста напоминания)
-func IsNotEmpty(s string) bool {
-	return len([]rune(s)) > 0
+	return n, err == nil && n >= 1 && n <= 31
 }

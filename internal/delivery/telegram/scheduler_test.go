@@ -136,25 +136,6 @@ func (s *stubReminderUC) counts() (edits, deletes, pauses int) {
 	return s.edits, s.deletes, s.pauses
 }
 
-// Неиспользуемая планировщиком часть интерфейса.
-func (s *stubReminderUC) AddReminder(context.Context, *domain.Reminder) error { return nil }
-func (s *stubReminderUC) ResumeReminder(context.Context, int64) error         { return nil }
-
-func (s *stubReminderUC) ListReminders(context.Context, int64) ([]*domain.Reminder, error) {
-	return nil, nil
-}
-
-func (s *stubReminderUC) GetReminder(context.Context, int64) (*domain.Reminder, error) {
-	return nil, nil
-}
-
-func (s *stubReminderUC) GetOwned(context.Context, int64, int64) (*domain.Reminder, error) {
-	return nil, nil
-}
-func (s *stubReminderUC) UpdateOwned(context.Context, *domain.Reminder, int64) error { return nil }
-func (s *stubReminderUC) DeleteOwned(context.Context, int64, int64) error            { return nil }
-func (s *stubReminderUC) SetPausedOwned(context.Context, int64, int64, bool) error   { return nil }
-
 type stubChatUC struct {
 	loc             *time.Location
 	availabilitySet bool
@@ -170,27 +151,11 @@ func (s *stubChatUC) Location(context.Context, int64) *time.Location {
 	return s.loc
 }
 
-func (s *stubChatUC) Get(context.Context, int64) (*domain.Chat, error) { return nil, nil }
-
-func (s *stubChatUC) GetOrCreateChat(
-	context.Context, int64, string, string, string,
-) (*domain.Chat, error) {
-	return nil, nil
-}
-func (s *stubChatUC) HasTimezone(context.Context, int64) (bool, error) { return true, nil }
-func (s *stubChatUC) SetTimezone(context.Context, int64, string) error { return nil }
-func (s *stubChatUC) ResolveChatID(_ context.Context, chatID int64) (int64, error) {
-	return chatID, nil
-}
-func (s *stubChatUC) MigrateChat(context.Context, int64, int64) error { return nil }
 func (s *stubChatUC) SetAvailable(_ context.Context, chatID int64, available bool) error {
 	s.availabilitySet = true
 	s.availableChatID = chatID
 	s.available = available
 	return nil
-}
-func (s *stubChatUC) IsAvailable(context.Context, int64) (bool, error) {
-	return true, nil
 }
 
 // --- Тесты ----------------------------------------------------------------

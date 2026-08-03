@@ -12,7 +12,6 @@ import (
 	"github.com/8thgencore/dory-reminder-bot/internal/config"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/webapp/auth"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/webapp/authz"
-	"github.com/8thgencore/dory-reminder-bot/internal/scheduling"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	tele "gopkg.in/telebot.v4"
 )
@@ -47,7 +46,6 @@ type server struct {
 	reminderUC usecase.ReminderUsecase
 	chatUC     usecase.ChatUsecase
 	memberUC   usecase.MemberUsecase
-	timeCalc   *scheduling.TimeCalculator
 	log        *slog.Logger
 }
 
@@ -61,7 +59,6 @@ func NewServer(d Deps) *http.Server {
 		reminderUC: d.ReminderUC,
 		chatUC:     d.ChatUC,
 		memberUC:   d.MemberUC,
-		timeCalc:   scheduling.NewTimeCalculator(),
 		log:        d.Log,
 	}
 

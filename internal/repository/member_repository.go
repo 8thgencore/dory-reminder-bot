@@ -98,20 +98,11 @@ func (r *memberRepository) ListChatsByUser(ctx context.Context, userID int64) ([
 
 	var chats []*domain.Chat
 	for rows.Next() {
-		var ch domain.Chat
-		if err := rows.Scan(
-			&ch.ID,
-			&ch.Type,
-			&ch.Name,
-			&ch.Username,
-			&ch.Timezone,
-			&ch.Available,
-			&ch.CreatedAt,
-			&ch.UpdatedAt,
-		); err != nil {
+		chat, err := scanChat(rows)
+		if err != nil {
 			return nil, fmt.Errorf("%w: failed to scan chat: %v", ErrDatabaseError, err)
 		}
-		chats = append(chats, &ch)
+		chats = append(chats, chat)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -130,17 +121,7 @@ func (r *memberRepository) RecentWebAppLaunch(
 		return nil, fmt.Errorf("%w: invalid user ID", ErrInvalidReminder)
 	}
 
-	var ch domain.Chat
-	err := r.db.QueryRowContext(ctx, recentWebAppLaunchQuery, userID, since.UTC()).Scan(
-		&ch.ID,
-		&ch.Type,
-		&ch.Name,
-		&ch.Username,
-		&ch.Timezone,
-		&ch.Available,
-		&ch.CreatedAt,
-		&ch.UpdatedAt,
-	)
+	ch, err := scanChat(r.db.QueryRowContext(ctx, recentWebAppLaunchQuery, userID, since.UTC()))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrChatNotFound
@@ -149,5 +130,5 @@ func (r *memberRepository) RecentWebAppLaunch(
 		return nil, fmt.Errorf("%w: failed to query recent webapp launch: %v", ErrDatabaseError, err)
 	}
 
-	return &ch, nil
+	return ch, nil
 }

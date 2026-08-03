@@ -1,4 +1,3 @@
-//unused:disable
 package mocks
 
 import (
@@ -9,8 +8,6 @@ import (
 // mockDB - мок базы данных для тестирования ошибок
 // Реализует интерфейс DBExecutor
 // Используется только в тестах
-//go:generate mockgen -destination=db.go -package=mocks . DBExecutor
-
 type MockDB struct {
 	ExecContextFunc     func(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryRowContextFunc func(ctx context.Context, query string, args ...any) *sql.Row
@@ -58,54 +55,4 @@ func (m *MockResult) RowsAffected() (int64, error) {
 		return m.RowsAffectedFunc()
 	}
 	return 0, nil
-}
-
-// mockRow - мок строки результата
-// Используется только в тестах
-type mockRow struct {
-	scanFunc func(dest ...any) error
-}
-
-func (m *mockRow) Scan(dest ...any) error {
-	if m.scanFunc != nil {
-		return m.scanFunc(dest...)
-	}
-	return nil
-}
-
-// mockRows - мок множественных строк результата
-// Используется только в тестах
-type mockRows struct {
-	nextFunc  func() bool
-	scanFunc  func(dest ...any) error
-	errFunc   func() error
-	closeFunc func() error
-}
-
-func (m *mockRows) Next() bool {
-	if m.nextFunc != nil {
-		return m.nextFunc()
-	}
-	return false
-}
-
-func (m *mockRows) Scan(dest ...any) error {
-	if m.scanFunc != nil {
-		return m.scanFunc(dest...)
-	}
-	return nil
-}
-
-func (m *mockRows) Err() error {
-	if m.errFunc != nil {
-		return m.errFunc()
-	}
-	return nil
-}
-
-func (m *mockRows) Close() error {
-	if m.closeFunc != nil {
-		return m.closeFunc()
-	}
-	return nil
 }

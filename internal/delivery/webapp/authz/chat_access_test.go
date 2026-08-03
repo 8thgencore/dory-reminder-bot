@@ -32,11 +32,21 @@ const (
 	groupID = int64(-1001234567890)
 )
 
+func newTestAccess(bot memberChecker) *Access {
+	return New(bot, newLifecycleStub())
+}
+
+func check(a *Access, ctx context.Context, userID, chatID int64) error {
+	_, err := a.Resolve(ctx, userID, chatID)
+
+	return err
+}
+
 func TestCheck_PrivateChatNeedsNoAPICall(t *testing.T) {
 	checker := &stubChecker{role: tele.Left}
-	a := New(checker)
+	a := newTestAccess(checker)
 
-	require.NoError(t, a.Check(context.Background(), userID, userID))
+	require.NoError(t, check(a, context.Background(), userID, userID))
 	assert.Zero(t, checker.calls.Load(), "private chat must not hit the Bot API")
 }
 
@@ -56,9 +66,9 @@ func TestCheck_RolesDecideAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.role), func(t *testing.T) {
-			a := New(&stubChecker{role: tt.role})
+			a := newTestAccess(&stubChecker{role: tt.role})
 
-			err := a.Check(context.Background(), userID, groupID)
+			err := check(a, context.Background(), userID, groupID)
 			if tt.allowed {
 				assert.NoError(t, err)
 			} else {
@@ -71,65 +81,54 @@ func TestCheck_RolesDecideAccess(t *testing.T) {
 // Сетевой сбой не должен открывать доступ и не должен попадать в кэш.
 func TestCheck_APIErrorDeniesAndIsNotCached(t *testing.T) {
 	checker := &stubChecker{err: errors.New("telegram is unreachable")}
-	a := New(checker)
+	a := newTestAccess(checker)
 
-	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
-	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
+	assert.ErrorIs(t, check(a, context.Background(), userID, groupID), ErrForbidden)
+	assert.ErrorIs(t, check(a, context.Background(), userID, groupID), ErrForbidden)
 	assert.EqualValues(t, 2, checker.calls.Load(), "failures must not be cached")
 }
 
 func TestCheck_RechecksAllowedMembership(t *testing.T) {
 	checker := &stubChecker{role: tele.Member}
-	a := New(checker)
+	a := newTestAccess(checker)
 
-	require.NoError(t, a.Check(context.Background(), userID, groupID))
+	require.NoError(t, check(a, context.Background(), userID, groupID))
 	checker.role = tele.Left
 
-	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
+	assert.ErrorIs(t, check(a, context.Background(), userID, groupID), ErrForbidden)
 	assert.EqualValues(t, 2, checker.calls.Load(), "allowed membership must not be cached")
 }
 
 func TestCheck_CachesDenial(t *testing.T) {
 	checker := &stubChecker{role: tele.Left}
-	a := New(checker)
+	a := newTestAccess(checker)
 
 	for range 5 {
-		assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
+		assert.ErrorIs(t, check(a, context.Background(), userID, groupID), ErrForbidden)
 	}
 	assert.EqualValues(t, 1, checker.calls.Load())
 }
 
 func TestCheck_CacheExpires(t *testing.T) {
 	checker := &stubChecker{role: tele.Left}
-	a := New(checker)
+	a := newTestAccess(checker)
 
 	now := time.Now()
 	a.now = func() time.Time { return now }
 
-	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
+	assert.ErrorIs(t, check(a, context.Background(), userID, groupID), ErrForbidden)
 	require.EqualValues(t, 1, checker.calls.Load())
 
 	now = now.Add(defaultCacheTTL + time.Second)
-	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
+	assert.ErrorIs(t, check(a, context.Background(), userID, groupID), ErrForbidden)
 	assert.EqualValues(t, 2, checker.calls.Load(), "expired entry must be refetched")
 }
 
-func TestForget_DropsCachedDecision(t *testing.T) {
-	checker := &stubChecker{role: tele.Left}
-	a := New(checker)
-
-	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
-	a.Forget(userID, groupID)
-	assert.ErrorIs(t, a.Check(context.Background(), userID, groupID), ErrForbidden)
-
-	assert.EqualValues(t, 2, checker.calls.Load())
-}
-
 func TestCheck_RejectsZeroIDs(t *testing.T) {
-	a := New(&stubChecker{role: tele.Member})
+	a := newTestAccess(&stubChecker{role: tele.Member})
 
-	assert.ErrorIs(t, a.Check(context.Background(), 0, groupID), ErrForbidden)
-	assert.ErrorIs(t, a.Check(context.Background(), userID, 0), ErrForbidden)
+	assert.ErrorIs(t, check(a, context.Background(), 0, groupID), ErrForbidden)
+	assert.ErrorIs(t, check(a, context.Background(), userID, 0), ErrForbidden)
 }
 
 // Отмена контекста не должна блокировать обработчик на таймауте Bot API.
@@ -137,12 +136,12 @@ func TestCheck_HonoursContextCancellation(t *testing.T) {
 	blocked := make(chan struct{})
 	t.Cleanup(func() { close(blocked) })
 
-	a := New(&blockingChecker{release: blocked})
+	a := newTestAccess(&blockingChecker{release: blocked})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	assert.ErrorIs(t, a.Check(ctx, userID, groupID), ErrForbidden)
+	assert.ErrorIs(t, check(a, ctx, userID, groupID), ErrForbidden)
 }
 
 type blockingChecker struct{ release chan struct{} }

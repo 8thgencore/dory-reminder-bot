@@ -38,18 +38,6 @@ type chatLifecycle interface {
 	IsAvailable(ctx context.Context, chatID int64) (bool, error)
 }
 
-type identityLifecycle struct{}
-
-func (identityLifecycle) ResolveChatID(_ context.Context, chatID int64) (int64, error) {
-	return chatID, nil
-}
-
-func (identityLifecycle) MigrateChat(context.Context, int64, int64) error { return nil }
-func (identityLifecycle) SetAvailable(context.Context, int64, bool) error { return nil }
-func (identityLifecycle) IsAvailable(context.Context, int64) (bool, error) {
-	return true, nil
-}
-
 type cacheKey struct {
 	userID int64
 	chatID int64
@@ -67,12 +55,7 @@ type Access struct {
 }
 
 // New создает проверку доступа поверх клиента бота.
-func New(bot memberChecker, lifecycle ...chatLifecycle) *Access {
-	chats := chatLifecycle(identityLifecycle{})
-	if len(lifecycle) > 0 && lifecycle[0] != nil {
-		chats = lifecycle[0]
-	}
-
+func New(bot memberChecker, chats chatLifecycle) *Access {
 	return &Access{
 		bot:    bot,
 		chats:  chats,
@@ -166,20 +149,6 @@ func (a *Access) Resolve(ctx context.Context, userID, chatID int64) (int64, erro
 	}
 
 	return 0, fmt.Errorf("%w: repeated chat migration", ErrForbidden)
-}
-
-// Check сохраняет прежний интерфейс для мест, которым не нужен актуальный ID.
-func (a *Access) Check(ctx context.Context, userID, chatID int64) error {
-	_, err := a.Resolve(ctx, userID, chatID)
-
-	return err
-}
-
-// Forget сбрасывает закэшированное решение — например, после выхода пользователя из чата.
-func (a *Access) Forget(userID, chatID int64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	delete(a.denied, cacheKey{userID: userID, chatID: chatID})
 }
 
 func (a *Access) deniedCached(key cacheKey) bool {

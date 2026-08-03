@@ -10,7 +10,6 @@ import (
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/infrastructure/telegramapi"
 	"github.com/8thgencore/dory-reminder-bot/internal/scheduling"
-	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	tele "gopkg.in/telebot.v4"
 )
 
@@ -30,16 +29,28 @@ type sender interface {
 	Send(to tele.Recipient, what any, opts ...any) (*tele.Message, error)
 }
 
+type reminderScheduler interface {
+	ListDue(ctx context.Context, now time.Time) ([]*domain.Reminder, error)
+	EditReminder(ctx context.Context, reminder *domain.Reminder) error
+	DeleteReminder(ctx context.Context, id int64) error
+	PauseReminder(ctx context.Context, id int64) error
+}
+
+type schedulerChats interface {
+	Location(ctx context.Context, chatID int64) *time.Location
+	SetAvailable(ctx context.Context, chatID int64, available bool) error
+}
+
 // Scheduler рассылает наступившие напоминания и переносит их на следующий раз.
 type Scheduler struct {
 	bot     sender
-	uc      usecase.ReminderUsecase
-	chatUc  usecase.ChatUsecase
+	uc      reminderScheduler
+	chatUc  schedulerChats
 	nowFunc func() time.Time
 }
 
 // NewScheduler создает планировщик напоминаний.
-func NewScheduler(bot sender, uc usecase.ReminderUsecase, chatUc usecase.ChatUsecase) *Scheduler {
+func NewScheduler(bot sender, uc reminderScheduler, chatUc schedulerChats) *Scheduler {
 	return &Scheduler{bot: bot, uc: uc, chatUc: chatUc, nowFunc: time.Now}
 }
 

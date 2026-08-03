@@ -56,34 +56,28 @@ func TestParseDateDDMMYYYY(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestParseDayMonth(t *testing.T) {
-	day, month, err := ParseDayMonth("13.06")
-	require.NoError(t, err)
-	assert.Equal(t, 13, day)
-	assert.Equal(t, time.June, month)
-
-	_, _, err = ParseDayMonth("32.13")
-	assert.Error(t, err)
-}
-
-func TestIsInterval(t *testing.T) {
+func TestParseInterval(t *testing.T) {
 	for _, s := range []string{"1", "10", "365"} {
-		assert.True(t, IsInterval(s), "expected %q to be valid", s)
+		_, ok := ParseInterval(s)
+		assert.True(t, ok, "expected %q to be valid", s)
 	}
 
 	// Верхняя граница появилась вместе с проверкой: без неё принималось 999999999.
 	for _, s := range []string{"0", "-1", "366", "999999999", "", "abc", "1.5"} {
-		assert.False(t, IsInterval(s), "expected %q to be invalid", s)
+		_, ok := ParseInterval(s)
+		assert.False(t, ok, "expected %q to be invalid", s)
 	}
 }
 
-func TestIsDayOfMonth(t *testing.T) {
+func TestParseDayOfMonth(t *testing.T) {
 	for _, s := range []string{"1", "15", "31"} {
-		assert.True(t, IsDayOfMonth(s), "expected %q to be valid", s)
+		_, ok := ParseDayOfMonth(s)
+		assert.True(t, ok, "expected %q to be valid", s)
 	}
 
 	for _, s := range []string{"0", "32", "-1", "", "abc"} {
-		assert.False(t, IsDayOfMonth(s), "expected %q to be invalid", s)
+		_, ok := ParseDayOfMonth(s)
+		assert.False(t, ok, "expected %q to be invalid", s)
 	}
 }
 
@@ -95,9 +89,4 @@ func TestIsTime(t *testing.T) {
 	for _, s := range []string{"24:00", "25:00", "12:60", "9:30", "", "abc"} {
 		assert.False(t, IsTime(s), "expected %q to be invalid", s)
 	}
-}
-
-func TestIsNotEmpty(t *testing.T) {
-	assert.True(t, IsNotEmpty("текст"))
-	assert.False(t, IsNotEmpty(""))
 }

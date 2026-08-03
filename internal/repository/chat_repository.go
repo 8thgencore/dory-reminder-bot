@@ -46,18 +46,8 @@ func (r *chatRepository) GetByID(ctx context.Context, chatID int64) (*domain.Cha
 
 	q := `SELECT chat_id, type, name, username, timezone, available, created_at, updated_at
         FROM chats WHERE chat_id=?`
-	row := r.db.QueryRowContext(ctx, q, chatID)
-	var ch domain.Chat
-	if err := row.Scan(
-		&ch.ID,
-		&ch.Type,
-		&ch.Name,
-		&ch.Username,
-		&ch.Timezone,
-		&ch.Available,
-		&ch.CreatedAt,
-		&ch.UpdatedAt,
-	); err != nil {
+	ch, err := scanChat(r.db.QueryRowContext(ctx, q, chatID))
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			slog.Debug("[Chat.GetByID] not found", "chatID", chatID)
 			return nil, ErrChatNotFound
@@ -67,7 +57,7 @@ func (r *chatRepository) GetByID(ctx context.Context, chatID int64) (*domain.Cha
 		return nil, err
 	}
 
-	return &ch, nil
+	return ch, nil
 }
 
 func (r *chatRepository) Upsert(ctx context.Context, chat *domain.Chat) error {
@@ -288,18 +278,8 @@ func (r *chatRepository) SetAvailable(ctx context.Context, chatID int64, availab
 }
 
 func getChatTx(ctx context.Context, tx *sql.Tx, chatID int64) (*domain.Chat, error) {
-	var ch domain.Chat
-	err := tx.QueryRowContext(ctx, `SELECT chat_id, type, name, username, timezone,
-        available, created_at, updated_at FROM chats WHERE chat_id=?`, chatID).Scan(
-		&ch.ID,
-		&ch.Type,
-		&ch.Name,
-		&ch.Username,
-		&ch.Timezone,
-		&ch.Available,
-		&ch.CreatedAt,
-		&ch.UpdatedAt,
-	)
+	ch, err := scanChat(tx.QueryRowContext(ctx, `SELECT chat_id, type, name, username, timezone,
+        available, created_at, updated_at FROM chats WHERE chat_id=?`, chatID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrChatNotFound
 	}
@@ -307,7 +287,7 @@ func getChatTx(ctx context.Context, tx *sql.Tx, chatID int64) (*domain.Chat, err
 		return nil, fmt.Errorf("%w: get chat for migration: %v", ErrDatabaseError, err)
 	}
 
-	return &ch, nil
+	return ch, nil
 }
 
 func mergeMigratedChat(oldChat, newChat *domain.Chat, newChatID int64) *domain.Chat {

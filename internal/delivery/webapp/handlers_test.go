@@ -19,7 +19,6 @@ import (
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/webapp/authz"
 	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/internal/repository"
-	"github.com/8thgencore/dory-reminder-bot/internal/scheduling"
 	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -107,7 +106,6 @@ func newTestEnvWithMembership(t *testing.T, checker interface {
 		reminderUC: remUC,
 		chatUC:     chatUC,
 		memberUC:   memberUC,
-		timeCalc:   scheduling.NewTimeCalculator(),
 		log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 

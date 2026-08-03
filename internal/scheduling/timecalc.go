@@ -20,20 +20,12 @@ var (
 	ErrNotRepeating = errors.New("reminder does not repeat")
 )
 
-// TimeCalculator содержит логику расчёта первого срабатывания напоминания.
-//
-// Все методы принимают now уже в часовом поясе чата и возвращают время в том же поясе;
-// перевод в UTC для хранения — обязанность вызывающего.
-type TimeCalculator struct{}
+// Функции расчёта принимают now уже в часовом поясе чата и возвращают время
+// в том же поясе; перевод в UTC для хранения — обязанность вызывающего.
 
-// NewTimeCalculator создает новый экземпляр TimeCalculator
-func NewTimeCalculator() *TimeCalculator {
-	return &TimeCalculator{}
-}
-
-// GetNextTimeToday вычисляет время для напоминания на сегодня.
+// NextToday вычисляет время для напоминания на сегодня.
 // Если время сегодня уже прошло, переносит на завтра.
-func (tc *TimeCalculator) GetNextTimeToday(now, t time.Time) time.Time {
+func NextToday(now, t time.Time) time.Time {
 	nextTime := atClock(now, t)
 	if !nextTime.After(now) {
 		nextTime = nextTime.AddDate(0, 0, 1)
@@ -42,18 +34,13 @@ func (tc *TimeCalculator) GetNextTimeToday(now, t time.Time) time.Time {
 	return nextTime
 }
 
-// GetNextTimeTomorrow вычисляет время для напоминания на завтра
-func (tc *TimeCalculator) GetNextTimeTomorrow(now, t time.Time) time.Time {
+// NextTomorrow вычисляет время для напоминания на завтра.
+func NextTomorrow(now, t time.Time) time.Time {
 	return atClock(now, t).AddDate(0, 0, 1)
 }
 
-// GetNextTimeEveryDay вычисляет время для ежедневного напоминания
-func (tc *TimeCalculator) GetNextTimeEveryDay(now, t time.Time) time.Time {
-	return tc.GetNextTimeToday(now, t)
-}
-
-// GetNextTimeWeek вычисляет время ближайшего срабатывания в заданный день недели (0 — воскресенье)
-func (tc *TimeCalculator) GetNextTimeWeek(now, t time.Time, weekday int) (time.Time, error) {
+// NextWeekday вычисляет время ближайшего срабатывания в заданный день недели (0 — воскресенье).
+func NextWeekday(now, t time.Time, weekday int) (time.Time, error) {
 	if weekday < 0 || weekday > 6 {
 		return time.Time{}, fmt.Errorf("%w: weekday %d is out of range 0..6", ErrInvalidDate, weekday)
 	}
@@ -68,8 +55,8 @@ func (tc *TimeCalculator) GetNextTimeWeek(now, t time.Time, weekday int) (time.T
 	return candidate, nil
 }
 
-// GetNextTimeMonth вычисляет время ближайшего срабатывания в заданное число месяца
-func (tc *TimeCalculator) GetNextTimeMonth(now, t time.Time, dayOfMonth int) (time.Time, error) {
+// NextMonthDay вычисляет время ближайшего срабатывания в заданное число месяца.
+func NextMonthDay(now, t time.Time, dayOfMonth int) (time.Time, error) {
 	if dayOfMonth < 1 || dayOfMonth > 31 {
 		return time.Time{}, fmt.Errorf("%w: day of month %d is out of range 1..31", ErrInvalidDate, dayOfMonth)
 	}
@@ -82,9 +69,9 @@ func (tc *TimeCalculator) GetNextTimeMonth(now, t time.Time, dayOfMonth int) (ti
 	return candidate, nil
 }
 
-// GetNextTimeYear вычисляет время ближайшего срабатывания в заданный день и месяц.
+// NextYearDay вычисляет время ближайшего срабатывания в заданный день и месяц.
 // date — строка в формате ДД.ММ.
-func (tc *TimeCalculator) GetNextTimeYear(now, t time.Time, date string) (time.Time, error) {
+func NextYearDay(now, t time.Time, date string) (time.Time, error) {
 	day, month, err := parseDayMonth(date)
 	if err != nil {
 		return time.Time{}, err
@@ -98,9 +85,9 @@ func (tc *TimeCalculator) GetNextTimeYear(now, t time.Time, date string) (time.T
 	return candidate, nil
 }
 
-// GetNextTimeDate вычисляет время разового напоминания на конкретную дату.
+// AtDate вычисляет время разового напоминания на конкретную дату.
 // date — строка в формате ДД.ММ.ГГГГ.
-func (tc *TimeCalculator) GetNextTimeDate(t time.Time, date string, loc *time.Location) (time.Time, error) {
+func AtDate(t time.Time, date string, loc *time.Location) (time.Time, error) {
 	d, err := time.ParseInLocation(dateLayout, date, loc)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("%w: %q is not a valid DD.MM.YYYY date", ErrInvalidDate, date)
@@ -109,9 +96,9 @@ func (tc *TimeCalculator) GetNextTimeDate(t time.Time, date string, loc *time.Lo
 	return time.Date(d.Year(), d.Month(), d.Day(), t.Hour(), t.Minute(), 0, 0, loc), nil
 }
 
-// GetNextTimeNDays вычисляет первое срабатывание напоминания «каждые N дней»,
+// NextNDays вычисляет первое срабатывание напоминания «каждые N дней»,
 // отсчитывая от даты старта.
-func (tc *TimeCalculator) GetNextTimeNDays(startTime, t time.Time, interval int) (time.Time, error) {
+func NextNDays(startTime, t time.Time, interval int) (time.Time, error) {
 	if interval < 1 {
 		return time.Time{}, fmt.Errorf("%w: interval must be at least 1, got %d", ErrInvalidInterval, interval)
 	}

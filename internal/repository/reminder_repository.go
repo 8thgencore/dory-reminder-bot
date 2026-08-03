@@ -283,42 +283,17 @@ func serializeRepeatDays(days []int) string {
 	return strings.Join(parts, ",")
 }
 
-// scanReminder сканирует одну строку результата в структуру Reminder
-func scanReminder(row *sql.Row) (*domain.Reminder, error) {
-	var rem domain.Reminder
-	var days string
-
-	err := row.Scan(
-		&rem.ID, &rem.ChatID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
-		&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	rem.RepeatDays = deserializeRepeatDays(days)
-
-	return &rem, nil
-}
-
 // scanReminders сканирует множество строк результата в слайс Reminder
 func scanReminders(rows *sql.Rows) ([]*domain.Reminder, error) {
 	var reminders []*domain.Reminder
 
 	for rows.Next() {
-		var rem domain.Reminder
-		var days string
-
-		err := rows.Scan(
-			&rem.ID, &rem.ChatID, &rem.Text, &rem.NextTime, &rem.Repeat, &days,
-			&rem.RepeatEvery, &rem.Paused, &rem.CreatedAt, &rem.UpdatedAt,
-		)
+		reminder, err := scanReminder(rows)
 		if err != nil {
 			return nil, err
 		}
 
-		rem.RepeatDays = deserializeRepeatDays(days)
-		reminders = append(reminders, &rem)
+		reminders = append(reminders, reminder)
 	}
 
 	if err := rows.Err(); err != nil {

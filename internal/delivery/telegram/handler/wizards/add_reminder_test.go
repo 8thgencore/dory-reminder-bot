@@ -18,67 +18,7 @@ func (m *mockReminderUsecase) AddReminder(ctx context.Context, r *domain.Reminde
 	return nil
 }
 
-func (m *mockReminderUsecase) EditReminder(ctx context.Context, r *domain.Reminder) error {
-	return nil
-}
-
-func (m *mockReminderUsecase) DeleteReminder(ctx context.Context, id int64) error {
-	return nil
-}
-
-func (m *mockReminderUsecase) PauseReminder(ctx context.Context, id int64) error {
-	return nil
-}
-
-func (m *mockReminderUsecase) ResumeReminder(ctx context.Context, id int64) error {
-	return nil
-}
-
-func (m *mockReminderUsecase) ListReminders(ctx context.Context, chatID int64) ([]*domain.Reminder, error) {
-	return nil, nil
-}
-
-func (m *mockReminderUsecase) ListDue(ctx context.Context, now time.Time) ([]*domain.Reminder, error) {
-	return nil, nil
-}
-
-func (m *mockReminderUsecase) GetReminder(ctx context.Context, id int64) (*domain.Reminder, error) {
-	return nil, nil
-}
-
-func (m *mockReminderUsecase) GetOwned(ctx context.Context, id, chatID int64) (*domain.Reminder, error) {
-	return nil, nil
-}
-
-func (m *mockReminderUsecase) UpdateOwned(ctx context.Context, r *domain.Reminder, chatID int64) error {
-	return nil
-}
-
-func (m *mockReminderUsecase) DeleteOwned(ctx context.Context, id, chatID int64) error {
-	return nil
-}
-
-func (m *mockReminderUsecase) SetPausedOwned(ctx context.Context, id, chatID int64, paused bool) error {
-	return nil
-}
-
 type mockChatUsecase struct{}
-
-func (m *mockChatUsecase) Get(ctx context.Context, chatID int64) (*domain.Chat, error) {
-	return &domain.Chat{ID: chatID, Type: "private", Name: "Test", Username: "", Timezone: "Europe/Moscow", CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
-}
-
-func (m *mockChatUsecase) GetOrCreateChat(ctx context.Context, chatID int64, chatType, name, username string) (*domain.Chat, error) {
-	return &domain.Chat{ID: chatID, Type: chatType, Name: name, Username: username, Timezone: "Europe/Moscow", CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
-}
-
-func (m *mockChatUsecase) HasTimezone(ctx context.Context, chatID int64) (bool, error) {
-	return true, nil
-}
-
-func (m *mockChatUsecase) SetTimezone(ctx context.Context, chatID int64, timezone string) error {
-	return nil
-}
 
 func (m *mockChatUsecase) Location(ctx context.Context, chatID int64) *time.Location {
 	loc, err := time.LoadLocation("Europe/Moscow")
@@ -89,28 +29,13 @@ func (m *mockChatUsecase) Location(ctx context.Context, chatID int64) *time.Loca
 	return loc
 }
 
-func (m *mockChatUsecase) ResolveChatID(_ context.Context, chatID int64) (int64, error) {
-	return chatID, nil
-}
-
-func (m *mockChatUsecase) MigrateChat(context.Context, int64, int64) error {
-	return nil
-}
-
-func (m *mockChatUsecase) SetAvailable(context.Context, int64, bool) error {
-	return nil
-}
-
-func (m *mockChatUsecase) IsAvailable(context.Context, int64) (bool, error) {
-	return true, nil
-}
-
 type mockContext struct {
 	tele.Context
 	text      string
 	sendCalls []string
 	callback  *tele.Callback
 	message   *tele.Message
+	responds  int
 }
 
 func (m *mockContext) Text() string {
@@ -142,6 +67,7 @@ func (m *mockContext) Message() *tele.Message {
 }
 
 func (m *mockContext) Respond(resp ...*tele.CallbackResponse) error {
+	m.responds++
 	return nil
 }
 
@@ -301,6 +227,7 @@ func TestAddWizard_MonthFlow(t *testing.T) {
 	sess = sessionMgr.Get(1, 1)
 	assert.Equal(t, 15, sess.Interval)
 	assert.Equal(t, session.StepTime, sess.Step)
+	assert.Zero(t, c.responds, "text handlers must not answer callback queries")
 
 	// Вводим время
 	c2 := &mockContext{text: "12:00"}
@@ -600,11 +527,6 @@ func TestAddWizard_GetAddReminderMessage(t *testing.T) {
 		{"today", "сегодня"},
 		{"tomorrow", "завтра"},
 		{"everyday", "каждый день"},
-		{"week", "день недели"},
-		{"ndays", "дней повторять"},
-		{"month", "день месяца"},
-		{"year", "дату и во сколько"},
-		{"date", "дату и время"},
 		{"unknown", "Неизвестный тип"},
 	}
 

@@ -12,7 +12,6 @@ const (
 	ErrUpdateReminder = "Ошибка при обновлении напоминания"
 	ErrCreateReminder = "Ошибка при создании напоминания"
 	ErrUnknownDay     = "Ошибка: неверный день недели."
-	ErrUnknownMonth   = "Ошибка: неверный месяц."
 	ErrSetTimezone    = "Ошибка при установке часового пояса"
 	ErrDeleteReminder = "Ошибка при удалении напоминания"
 	ErrPauseReminder  = "Ошибка при постановке напоминания на паузу"

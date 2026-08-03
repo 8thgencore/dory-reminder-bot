@@ -82,6 +82,20 @@ async function api(path, options = {}) {
 
 // --- Форматирование -------------------------------------------------------
 
+function dateTimeFormatter(locale, options, timezone) {
+  const localized = { ...options };
+  if (timezone) {
+    localized.timeZone = timezone;
+  }
+
+  try {
+    return new Intl.DateTimeFormat(locale, localized);
+  } catch {
+    delete localized.timeZone;
+    return new Intl.DateTimeFormat(locale, localized);
+  }
+}
+
 /** Форматирует момент времени в часовом поясе чата. */
 function formatDateTime(iso, timezone) {
   const date = new Date(iso);
@@ -92,17 +106,8 @@ function formatDateTime(iso, timezone) {
     hour: '2-digit',
     minute: '2-digit',
   };
-  if (timezone) {
-    options.timeZone = timezone;
-  }
 
-  try {
-    return new Intl.DateTimeFormat('ru-RU', options).format(date);
-  } catch {
-    // Неизвестный часовой пояс не должен ломать весь список.
-    delete options.timeZone;
-    return new Intl.DateTimeFormat('ru-RU', options).format(date);
-  }
+  return dateTimeFormatter('ru-RU', options, timezone).format(date);
 }
 
 /** Собирает человекочитаемое описание повтора. */
@@ -128,15 +133,8 @@ function describeRepeat(reminder) {
 /** Возвращает ЧЧ:ММ в часовом поясе чата — для предзаполнения формы. */
 function timeInZone(iso, timezone) {
   const options = { hour: '2-digit', minute: '2-digit', hour12: false };
-  if (timezone) {
-    options.timeZone = timezone;
-  }
-  try {
-    return new Intl.DateTimeFormat('ru-RU', options).format(new Date(iso));
-  } catch {
-    delete options.timeZone;
-    return new Intl.DateTimeFormat('ru-RU', options).format(new Date(iso));
-  }
+
+  return dateTimeFormatter('ru-RU', options, timezone).format(new Date(iso));
 }
 
 // --- Навигация ------------------------------------------------------------
@@ -432,16 +430,7 @@ function openForm(reminder) {
 /** Переводит момент времени в значение для <input type="date"> (ГГГГ-ММ-ДД). */
 function isoToDateInput(iso, timezone) {
   const options = { year: 'numeric', month: '2-digit', day: '2-digit' };
-  if (timezone) {
-    options.timeZone = timezone;
-  }
-  let parts;
-  try {
-    parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(new Date(iso));
-  } catch {
-    delete options.timeZone;
-    parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(new Date(iso));
-  }
+  const parts = dateTimeFormatter('en-CA', options, timezone).formatToParts(new Date(iso));
 
   const get = (type) => (parts.find((p) => p.type === type) || {}).value;
 

@@ -10,8 +10,7 @@ import (
 
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/texts"
 	"github.com/8thgencore/dory-reminder-bot/internal/delivery/telegram/handler/ui"
-	usecase_domain "github.com/8thgencore/dory-reminder-bot/internal/domain"
-	"github.com/8thgencore/dory-reminder-bot/internal/usecase"
+	"github.com/8thgencore/dory-reminder-bot/internal/domain"
 	"github.com/8thgencore/dory-reminder-bot/pkg/validator"
 	tele "gopkg.in/telebot.v4"
 )
@@ -19,14 +18,28 @@ import (
 // Пагинация: сколько напоминаний на страницу
 const remindersPerPage = 10
 
+type reminderCommands interface {
+	ListReminders(ctx context.Context, chatID int64) ([]*domain.Reminder, error)
+	EditReminder(ctx context.Context, reminder *domain.Reminder) error
+	DeleteReminder(ctx context.Context, id int64) error
+	PauseReminder(ctx context.Context, id int64) error
+	ResumeReminder(ctx context.Context, id int64) error
+}
+
+type reminderChats interface {
+	Get(ctx context.Context, chatID int64) (*domain.Chat, error)
+	HasTimezone(ctx context.Context, chatID int64) (bool, error)
+	Location(ctx context.Context, chatID int64) *time.Location
+}
+
 // ReminderCRUD содержит обработчики CRUD операций с напоминаниями
 type ReminderCRUD struct {
-	Usecase     usecase.ReminderUsecase
-	ChatUsecase usecase.ChatUsecase
+	Usecase     reminderCommands
+	ChatUsecase reminderChats
 }
 
 // NewReminderCRUD создает новый экземпляр ReminderCRUD
-func NewReminderCRUD(reminderUc usecase.ReminderUsecase, chatUc usecase.ChatUsecase) *ReminderCRUD {
+func NewReminderCRUD(reminderUc reminderCommands, chatUc reminderChats) *ReminderCRUD {
 	return &ReminderCRUD{
 		Usecase:     reminderUc,
 		ChatUsecase: chatUc,
@@ -39,7 +52,7 @@ func (rc *ReminderCRUD) checkTimezone(c tele.Context) (bool, error) {
 }
 
 // getReminders возвращает список напоминаний для чата
-func (rc *ReminderCRUD) getReminders(chatID int64) ([]*usecase_domain.Reminder, error) {
+func (rc *ReminderCRUD) getReminders(chatID int64) ([]*domain.Reminder, error) {
 	return rc.Usecase.ListReminders(context.Background(), chatID)
 }
 
@@ -192,10 +205,15 @@ func (rc *ReminderCRUD) OnEdit(c tele.Context) error {
 	}
 
 	if newTime != "" {
-		if !validator.IsTime(newTime) {
-			return c.Send(texts.EditTimeFormat)
+		nextTime, err := nextTimeAtClock(
+			newTime,
+			rem.NextTime,
+			rc.ChatUsecase.Location(context.Background(), c.Chat().ID),
+		)
+		if err != nil {
+			return c.Send(texts.ErrUpdateReminder)
 		}
-		rem.NextTime = validator.NextTimeFromString(newTime, rem.NextTime)
+		rem.NextTime = nextTime
 	}
 	if newText != "" {
 		rem.Text = newText
@@ -206,6 +224,30 @@ func (rc *ReminderCRUD) OnEdit(c tele.Context) error {
 	}
 
 	return c.Send(texts.ReminderUpdated)
+}
+
+func nextTimeAtClock(value string, base time.Time, loc *time.Location) (time.Time, error) {
+	clock, err := time.ParseInLocation("15:04", value, loc)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	localBase := base.In(loc)
+	candidate := time.Date(
+		localBase.Year(),
+		localBase.Month(),
+		localBase.Day(),
+		clock.Hour(),
+		clock.Minute(),
+		0,
+		0,
+		loc,
+	)
+	if candidate.Before(localBase) {
+		candidate = candidate.AddDate(0, 0, 1)
+	}
+
+	return candidate.UTC(), nil
 }
 
 // handleReminderAction — общий шаблон для удаления, паузы и возобновления.

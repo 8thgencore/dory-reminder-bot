@@ -287,3 +287,18 @@ test('chat changes and activation use the same current view state', async () => 
   harness.flushFrame();
   assert.equal(harness.buttonCalls.at(-1).params.text, 'Сохранить');
 });
+
+test('date formatting falls back when the chat timezone is unknown', () => {
+  const harness = makeHarness({
+    '/api/v1/chats/-1002/reminders': { timezone: '', reminders: [] },
+  });
+  const iso = '2025-06-13T09:30:00Z';
+
+  for (const expression of [
+    `formatDateTime('${iso}', 'Invalid/Timezone') === formatDateTime('${iso}', '')`,
+    `timeInZone('${iso}', 'Invalid/Timezone') === timeInZone('${iso}', '')`,
+    `isoToDateInput('${iso}', 'Invalid/Timezone') === isoToDateInput('${iso}', '')`,
+  ]) {
+    assert.equal(vm.runInContext(expression, harness.context), true);
+  }
+});
