@@ -145,6 +145,13 @@ WEBAPP_PUBLIC_URL=https://dory.example.com
    автоматически. После `docker compose up -d` Caddy сам выпустит сертификат
    при первом запросе — ничего дополнительно настраивать не нужно.
 
+   При подключении к голому IP браузер не передаёт SNI в TLS-хендшейке, из-за
+   чего Caddy не может определить, какой сертификат отдавать, и разрывает
+   соединение ошибкой `ERR_SSL_PROTOCOL_ERROR` / `internal error` — это
+   известный баг Caddy ([caddyserver/caddy#6364](https://github.com/caddyserver/caddy/issues/6364)),
+   проявляется у всех современных браузеров. `Caddyfile` обходит его
+   директивой `default_sni {$CADDY_SITE_ADDR}` в глобальных опциях.
+
    Если нужен свой Caddy вне этого compose-файла, пример конфига:
 
    ```caddy
