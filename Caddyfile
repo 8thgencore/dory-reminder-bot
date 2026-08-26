@@ -1,0 +1,9 @@
+{$CADDY_SITE_ADDR} {
+	# Port 80 is unavailable on this host, so certificate issuance/renewal
+	# uses only the TLS-ALPN-01 challenge, which runs over the same 443
+	# the site is already served on.
+	tls {
+		disable_http_challenge
+	}
+	reverse_proxy bot:8080
+}

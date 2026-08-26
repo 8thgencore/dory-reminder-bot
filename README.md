@@ -122,13 +122,33 @@ WEBAPP_ADDR=:8080
 WEBAPP_PUBLIC_URL=https://dory.example.com
 ```
 
-2. Настройте reverse proxy. Пример для Caddy:
+2. Настройте reverse proxy.
 
-```caddy
-dory.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
+   В проекте уже есть готовый `Caddyfile`, подключённый сервисом `caddy` в
+   `docker-compose.yaml`. Он автоматически получает и обновляет TLS-сертификат
+   через Let's Encrypt — с 2026 года это работает не только для доменов, но и
+   для голых публичных IP-адресов. Достаточно указать адрес сайта в `.env`:
+
+   ```env
+   CADDY_SITE_ADDR=dory.example.com
+   # или, если нет домена:
+   CADDY_SITE_ADDR=203.0.113.10
+   ```
+
+   `CADDY_SITE_ADDR` должен совпадать с хостом из `WEBAPP_PUBLIC_URL`. Наружу
+   публикуется только порт `443` — выпуск и продление сертификата идёт через
+   TLS-ALPN-01 challenge (порт `80` для этого не нужен, `Caddyfile` явно
+   отключает HTTP-01 через `disable_http_challenge`). После
+   `docker compose up -d` Caddy сам выпустит сертификат при первом запросе —
+   ничего дополнительно настраивать не нужно.
+
+   Если нужен свой Caddy вне этого compose-файла, пример конфига:
+
+   ```caddy
+   dory.example.com {
+       reverse_proxy 127.0.0.1:8080
+   }
+   ```
 
 Пример для nginx:
 
@@ -218,6 +238,12 @@ docker compose up -d
 Порт `8080` публикуется только на loopback: наружу его выставляет reverse proxy.
 Если Mini App не используется, строку `ports` в `docker-compose.yaml` можно убрать.
 
+Сервис `caddy` публикует только `443` (порт `80` занят на хосте, поэтому
+`Caddyfile` использует TLS-ALPN-01 вместо HTTP-01) и получает сертификат
+Let's Encrypt для адреса из `CADDY_SITE_ADDR` (см. раздел про Mini App выше).
+Если Mini App не нужен или TLS терминируется снаружи, сервис `caddy` можно
+убрать из `docker-compose.yaml`.
+
 ## 📊 База данных
 
 Проект использует SQLite. База автоматически создаётся по пути `DB_PATH`
@@ -250,6 +276,7 @@ docker compose up -d
 | `WEBAPP_ADDR` | Адрес прослушивания | `:8080` |
 | `WEBAPP_PUBLIC_URL` | Публичный HTTPS-адрес приложения | — (обязательно при `WEBAPP_ENABLED=true`) |
 | `WEBAPP_INITDATA_TTL` | Максимальный возраст `initData` | `24h` |
+| `CADDY_SITE_ADDR` | Адрес сайта для встроенного Caddy (домен или публичный IP) | — (обязательно, если используется сервис `caddy`) |
 
 ## 📝 Команды бота
 
