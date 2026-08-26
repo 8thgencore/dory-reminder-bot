@@ -5,6 +5,10 @@
 	tls {
 		issuer acme {
 			disable_http_challenge
+			# Let's Encrypt only allows IP address identifiers under the
+			# "shortlived" profile (~6-day certs); harmless for domains too,
+			# and Caddy renews well before expiry either way.
+			profile shortlived
 		}
 	}
 	reverse_proxy bot:8080
