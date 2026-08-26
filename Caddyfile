@@ -3,7 +3,9 @@
 	# uses only the TLS-ALPN-01 challenge, which runs over the same 443
 	# the site is already served on.
 	tls {
-		disable_http_challenge
+		issuer acme {
+			disable_http_challenge
+		}
 	}
 	reverse_proxy bot:8080
 }
